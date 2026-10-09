@@ -13,10 +13,11 @@
 #           the runner images ship disabled; with System Integrity
 #           Protection off, root enables and loads it
 #   source  the folder, and fixed-path exclusions of everything else
+#   local   a second image's volume, included in the backup, with no
+#           destination set: `tmutil localsnapshot`, a change, another
+#           `tmutil localsnapshot` and another change, so the live tree
+#           differs from both snapshots
 #   plain   the destination is the one volume newfs_apfs makes in a raw image
-#   local   with the plain destination still set, a second image's volume is
-#           included in the backup and `tmutil localsnapshot` is asked to
-#           snapshot every included volume
 #   role    a case-sensitive destination volume with the Time Machine role;
 #           run only when the plain destination holds fewer than two
 #           snapshots
@@ -94,9 +95,9 @@ backup() {
     return "$rc"
 }
 
-# change V : one of each kind of change to the source folder.
+# change V TREE : one of each kind of change to the tree at TREE.
 change() {
-    local t=$SRC/tree/top
+    local t=$2/top
     step "$1-change-write" 30 "$PY" "$HERE/opsutil.py" write "$t/added" 5000 9
     step "$1-change-extend" 30 "$PY" "$HERE/opsutil.py" extend "$t/hundred" 8192
     step "$1-change-remove" 30 rm "$t/sub2/deep/a"
@@ -120,32 +121,45 @@ snapshots() {
     SNAPS=$i
 }
 
-# local_test : a second image's volume, included in the backup, and a local
-# snapshot of every included volume.
+# local_test : the local section.
 local_test() {
-    local img dev cont vdev mnt
-    img=$(newfs_file local 256m -v Src) || return
-    if dev=$(attach_raw local "$img"); then
-        if cont=$(container_of local-list "$dev") && vdev=$(volume_named local-list "$cont" Src) &&
-            sstep local-mount 120 diskutil mount "$vdev"; then
-            sstep local-ownership 60 diskutil enableOwnership "$vdev"
-            step local-info 60 diskutil info -plist "$vdev"
-            if mnt=$("$PY" "$HERE/disks.py" key "$OUT/log/local-info.out" MountPoint); then
-                sstep local-tree 120 "$PY" "$HERE/opsutil.py" srctree "$mnt/tree"
-                step local-isexcluded-before 30 tmutil isexcluded "$mnt"
-                sstep local-include 60 tmutil removeexclusion -v "$mnt"
-                step local-isexcluded 30 tmutil isexcluded "$mnt"
-                sstep local-localsnapshot 300 tmutil localsnapshot
-                step local-snapshots 60 diskutil apfs listSnapshots -plist "$vdev"
-                sstep local-listlocalsnapshots 60 tmutil listlocalsnapshots "$mnt"
-                sstep local-data-localsnapshots 60 tmutil listlocalsnapshots /
+    local v=local img dev cont vdev mnt t
+    img=$(newfs_file $v 256m -v Src) || return
+    if dev=$(attach_raw $v "$img"); then
+        if cont=$(container_of $v-list "$dev") && vdev=$(volume_named $v-list "$cont" Src) &&
+            sstep $v-mount 120 diskutil mount "$vdev"; then
+            sstep $v-ownership 60 diskutil enableOwnership "$vdev"
+            step $v-info 60 diskutil info -plist "$vdev"
+            if mnt=$("$PY" "$HERE/disks.py" key "$OUT/log/$v-info.out" MountPoint); then
+                t=$mnt/tree
+                sstep $v-mdutil-off 60 mdutil -i off "$mnt"
+                sstep $v-mkdir 30 mkdir "$t"
+                sstep $v-chown 30 chown "$(id -u):$(id -g)" "$t"
+                step $v-tree 120 "$PY" "$HERE/opsutil.py" srctree "$t"
+                step $v-isexcluded-before 30 tmutil isexcluded "$mnt"
+                sstep $v-include 60 tmutil removeexclusion -v "$mnt"
+                step $v-isexcluded 30 tmutil isexcluded "$mnt"
+                step $v-tree-ls-1 60 ls -laeO@iR "$t"
+                sstep $v-localsnapshot-1 300 tmutil localsnapshot
+                # A snapshot's name carries its time to the second.
+                sleep 2
+                change $v "$t"
+                step $v-tree-ls-2 60 ls -laeO@iR "$t"
+                sstep $v-localsnapshot-2 300 tmutil localsnapshot
+                step $v-change2-write 30 "$PY" "$HERE/opsutil.py" write "$t/top/later" 3000 11
+                step $v-change2-unlink 30 rm "$t/top/three"
+                step $v-change2-xattr 30 "$PY" "$HERE/opsutil.py" setxattr "$t/top/under" user.later 100
+                step $v-tree-ls-3 60 ls -laeO@iR "$t"
+                sstep $v-listlocalsnapshots 60 tmutil listlocalsnapshots "$mnt"
+                sstep $v-data-localsnapshots 60 tmutil listlocalsnapshots /
+                snapshots $v "$vdev"
             fi
-            unmount_vol local "$vdev"
+            unmount_vol $v "$vdev"
         fi
-        detach local "$dev"
+        detach $v "$dev"
     fi
-    step local-fsck 300 fsck_apfs -n -W "$img"
-    dump local "$img"
+    step $v-fsck 300 fsck_apfs -n -W "$img"
+    dump $v "$img"
     rm -f "$img"
 }
 
@@ -173,7 +187,7 @@ on_destination() {
     rc=$?
     step "$v-snapshots-1" 60 diskutil apfs listSnapshots -plist "$vdev"
     if [ "$rc" -ne 142 ]; then
-        change "$v"
+        change "$v" "$SRC/tree"
         step "$v-tree-ls-2" 60 ls -laeO@iR "$SRC/tree"
         backup "$v-backup-2" "$id"
     fi
@@ -181,10 +195,6 @@ on_destination() {
     sstep "$v-live-ls" 120 ls -laeO@iR "$mnt"
     step "$v-mounts-after" 30 mount
     snapshots "$v" "$vdev"
-    if [ "$v" = plain ]; then
-        section local
-        local_test
-    fi
     if [ -n "$id" ]; then
         sstep "$v-removedestination" 60 tmutil removedestination "$id"
     fi
@@ -210,6 +220,9 @@ variant() {
     dump "$v" "$img"
     rm -f "$img"
 }
+
+section local
+local_test
 
 section plain
 variant plain Dest-plain ""

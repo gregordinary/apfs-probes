@@ -32,10 +32,11 @@ each runner it is given:
 - `srcfolder`: `hdiutil create -srcfolder` images of a fixed tree, the same
   tree built in reverse order, and a tree with links, sparse and compressed
   files and extended attributes, each listed by `apfs_checkseal`.
-- `timemachine`: Time Machine backing up one small folder to an attached
-  image, before and after a change to it, with the destination's snapshots
-  listed and each mounted and listed; and a local snapshot of a second
-  attached volume included in the backup.
+- `timemachine`: local snapshots `tmutil localsnapshot` takes of an
+  attached volume included in the backup, before and after a change to it;
+  and Time Machine backing up one small folder to an attached image, before
+  and after a change to it. Each snapshot is listed, mounted read-only and
+  listed.
 
 ## What a run keeps
 

@@ -21,6 +21,10 @@
 #            fsprobe.py manifest; and n4 (nothing)
 #   delete   c2 -> d1 (the older snapshot deleted) -> d1w (mount, wait)
 #            -> d2 (the other snapshot deleted) -> d2w (mount, wait)
+#   many     from inc: MANY snapshots in one mount, each taken right after
+#            a file is written, then a change no snapshot holds; manyv
+#            (each snapshot's tree, as views); nm (nothing); dmid (the
+#            snapshot in the middle deleted)
 #
 # Each snapshot stage records the wall-clock time in nanoseconds before and
 # after `tmutil localsnapshot`, and every stage lists the volume's snapshots
@@ -32,7 +36,8 @@
 . "$(dirname "$0")/lib.sh" "$1"
 
 VOL=Snap
-KEEP=" base m0 inc s1 c1 s2 c2 d1 d1w d2 "
+MANY=30
+KEEP=" base m0 inc s1 c1 s2 c2 d1 d1w d2 many "
 
 copy_img() {
     cp -c "$WORK/$1.img" "$WORK/$2.img" 2>/dev/null || cp "$WORK/$1.img" "$WORK/$2.img"
@@ -99,18 +104,47 @@ op_change2() {
     step "$n-xattr" 30 "$PY" "$HERE/opsutil.py" setxattr "$t/under" user.later 100
 }
 
-# op_delete STAGE VDEV MNT : delete the oldest snapshot, by diskutil, or by
-# Time Machine where diskutil refuses.
-op_delete() {
-    local n=$1 vdev=$2 mnt=$3 name date
+# op_many STAGE VDEV MNT : MANY snapshots, each right after a file is
+# written, then a write and a removal that no snapshot holds.
+op_many() {
+    local n=$1 mnt=$3 t=$3/tree/top i=1
+    step "$n-isexcluded" 30 tmutil isexcluded "$mnt"
+    if grep -q Excluded "$OUT/log/$n-isexcluded.out"; then
+        sstep "$n-include" 60 tmutil removeexclusion -v "$mnt"
+    fi
+    while [ $i -le $MANY ]; do
+        step "$n-$i-write" 30 "$PY" "$HERE/opsutil.py" write "$t/many-$i" $((100 * i)) $((20 + i))
+        now_ns "$n-$i-t0"
+        sstep "$n-$i-localsnapshot" 300 tmutil localsnapshot
+        now_ns "$n-$i-t1"
+        # A snapshot's name carries its time to the second.
+        sleep 1
+        i=$((i + 1))
+    done
+    step "$n-after-write" 30 "$PY" "$HERE/opsutil.py" write "$t/after-many" 2000 13
+    step "$n-after-remove" 30 rm "$t/one"
+}
+
+# delete_nth STAGE VDEV K : delete the Kth snapshot listed, by diskutil, or
+# by Time Machine where diskutil refuses.
+delete_nth() {
+    local n=$1 vdev=$2 k=$3 name date
     step "$n-before" 60 diskutil apfs listSnapshots -plist "$vdev" || return
-    name=$("$PY" "$HERE/disks.py" snapshots "$OUT/log/$n-before.out" | head -1)
+    name=$("$PY" "$HERE/disks.py" snapshots "$OUT/log/$n-before.out" | sed -n "${k}p")
     [ -n "$name" ] || return
     if ! sstep "$n-delete" 300 diskutil apfs deleteSnapshot "$vdev" -name "$name"; then
         date=${name#com.apple.TimeMachine.}
         date=${date%.local}
         sstep "$n-delete-tm" 300 tmutil deletelocalsnapshots "$date"
     fi
+}
+
+op_delete() {
+    delete_nth "$1" "$2" 1
+}
+
+op_delete_mid() {
+    delete_nth "$1" "$2" $((MANY / 2))
 }
 
 op_wait() {
@@ -223,6 +257,12 @@ stage d1 c2 delete
 stage d1w d1 wait
 stage d2 d1w delete
 stage d2w d2 wait
+
+section many
+stage many inc many
+views manyv many
+stage nm many nothing
+stage dmid many delete_mid
 
 section after
 sstep tm-localsnapshots-end 60 tmutil listlocalsnapshots /

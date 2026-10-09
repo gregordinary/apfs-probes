@@ -40,7 +40,9 @@ each runner it is given:
 - `snapshots`: one image per step of taking a local snapshot, changing the
   volume under it, taking a second, mounting each read-only, and deleting
   both, each beside an image whose mount did nothing, as `ops` does for
-  single operations.
+  single operations; and thirty snapshots in one mount, each right after a
+  write, each mounted read-only and listed, with one deleted from the
+  middle.
 
 ## What a run keeps
 

@@ -37,6 +37,10 @@ each runner it is given:
   and Time Machine backing up one small folder to an attached image, before
   and after a change to it. Each snapshot is listed, mounted read-only and
   listed.
+- `snapshots`: one image per step of taking a local snapshot, changing the
+  volume under it, taking a second, mounting each read-only, and deleting
+  both, each beside an image whose mount did nothing, as `ops` does for
+  single operations.
 
 ## What a run keeps
 

@@ -9,12 +9,15 @@
 # read-only and listed, and the image checked and dumped.
 #
 #   env     Time Machine's state before the probe changes anything
+#   backupd the daemon every backup and local snapshot goes through, which
+#           the runner images ship disabled; with System Integrity
+#           Protection off, root enables and loads it
 #   source  the folder, and fixed-path exclusions of everything else
 #   plain   the destination is the one volume newfs_apfs makes in a raw image
 #   local   with the plain destination still set, a second image's volume is
 #           included in the backup and `tmutil localsnapshot` is asked to
 #           snapshot every included volume
-#   tm      a case-sensitive destination volume with the Time Machine role;
+#   role    a case-sensitive destination volume with the Time Machine role;
 #           run only when the plain destination holds fewer than two
 #           snapshots
 #
@@ -44,6 +47,14 @@ step launchd-disabled 30 launchctl print-disabled system
 sstep tcc-fda 30 sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
     "select client, client_type, auth_value from access where service = 'kTCCServiceSystemPolicyAllFiles'"
 step data-entries 30 ls -la "$DATA"
+
+section backupd
+BACKUPD=/System/Library/LaunchDaemons/com.apple.backupd.plist
+step backupd-plists 30 sh -c 'ls -l /System/Library/LaunchDaemons | grep -i backup'
+sstep backupd-enable 30 launchctl enable system/com.apple.backupd
+sstep backupd-bootstrap 60 launchctl bootstrap system "$BACKUPD" ||
+    sstep backupd-load 60 launchctl load -w "$BACKUPD"
+step backupd-loaded 30 launchctl print system/com.apple.backupd
 
 section source
 sstep src-mkdir 30 mkdir "$SRC"
@@ -203,11 +214,11 @@ variant() {
 section plain
 variant plain Dest-plain ""
 
-section tm
+section role
 if [ "$SNAPS" -lt 2 ]; then
-    variant tm Dest-tm T -e
+    variant role Dest-role T -e
 else
-    printf '#\t%s\n' "tm skipped: the plain destination holds $SNAPS snapshots" >>"$STEPS"
+    printf '#\t%s\n' "role skipped: the plain destination holds $SNAPS snapshots" >>"$STEPS"
 fi
 
 section after

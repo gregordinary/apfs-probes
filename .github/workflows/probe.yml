@@ -1,0 +1,49 @@
+name: probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe:
+        description: Probe to run, a script under probe/ without its .sh
+        required: true
+        default: discover
+      runners:
+        description: JSON list of runner labels
+        required: true
+        default: '["macos-15", "macos-26", "xcode-27"]'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ inputs.probe }} on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run the probe
+        timeout-minutes: 35
+        env:
+          PROBE: ${{ inputs.probe }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          [[ $PROBE =~ ^[a-z0-9-]+$ && -f probe/$PROBE.sh ]] || { echo "no probe named $PROBE"; exit 1; }
+          bash "probe/$PROBE.sh" out
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.probe }}-${{ matrix.runner }}
+          path: out/
+          retention-days: 7
+          if-no-files-found: error

@@ -20,7 +20,11 @@
 
 import os
 import plistlib
+import re
 import sys
+
+# The content hint of the container disk APFS synthesizes over its store.
+APFS_CONTAINER = "EF57347C-0000-11AA-AA11-00306543ECAC"
 
 
 def load(path):
@@ -42,11 +46,14 @@ def containers(listing):
 
 def main(argv):
     if len(argv) == 3 and argv[1] == "attach-dev":
+        # The image's whole disk, which is listed in no fixed order beside
+        # its slices and the container disk APFS synthesizes over a slice.
         entities = load(argv[2]).get("system-entities", [])
-        devs = [e["dev-entry"] for e in entities if "dev-entry" in e]
-        if not devs:
-            raise SystemExit("no device in attach output")
-        print(min(devs, key=len))
+        whole = [e for e in entities if re.fullmatch(r"/dev/disk[0-9]+", e.get("dev-entry", ""))]
+        image = [e for e in whole if e.get("content-hint") != APFS_CONTAINER]
+        if not image:
+            raise SystemExit("no image disk in attach output")
+        print(image[0]["dev-entry"])
     elif len(argv) == 4 and argv[1] == "container-of":
         dev = bare(argv[3])
         for c in containers(load(argv[2])):

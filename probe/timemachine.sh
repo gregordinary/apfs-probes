@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Whether Time Machine, given an attached APFS image as its destination,
-# leaves snapshots on it.
+# Snapshots Time Machine makes on attached APFS images.
 #
-# On macOS 11 and later each backup to an APFS destination is kept as a
-# snapshot of the destination volume. Everything on the data volume but one
-# small folder is excluded; the folder is backed up, changed, and backed up
-# again, and the destination's snapshots are listed, each one mounted
-# read-only and listed, and the image checked and dumped.
+# `tmutil localsnapshot` snapshots every APFS volume included in the backup,
+# an attached one too. And on macOS 11 and later each backup to an APFS
+# destination is kept as a snapshot of the destination volume: everything on
+# the data volume but one small folder is excluded, and the folder is backed
+# up, changed, and backed up again. Each image's snapshots are listed, each
+# one mounted read-only and listed, and the image checked and dumped.
 #
 #   env     Time Machine's state before the probe changes anything
 #   backupd the daemon every backup and local snapshot goes through, which

@@ -6,6 +6,8 @@ writes and of the files macOS ships under it.
     type9util.py own CODECS.json DIR OUT.json
     type9util.py ownread MNT OUT.jsonl
     type9util.py ownlog LOG READS.jsonl OUT.jsonl
+    type9util.py layout DIR OUT.json
+    type9util.py layoutread MNT OUT.jsonl
     type9util.py apple CODECS.json OUT.jsonl SUMMARY.json SECONDS ROOT...
     type9util.py guessworker CODECS.json
     type9util.py copies APPLE.jsonl DIR PLAN.json PRIVATE.json
@@ -20,6 +22,11 @@ attribute and resource fork hold this script's bytes, varied one field at a
 time: the payload's length and bytes, the header's size and type fields, and
 each algorithm's encoding of a known text. `ownread` reads each back through
 the kernel, and `ownlog` keeps what the system log says during each read.
+`layout` writes files that hold the probe's own content after the marker byte
+0xCC, which is how the files macOS ships under type 9 hold theirs: of sizes
+from 0 to 1 MiB, with every other marker value, with a header size that cuts
+or extends the content, and in the resource fork under type 10, alone and in
+type 8's table. `layoutread` reads each back against that content.
 
 `apple`, `copies`, `copyread`, `copylog` and `schemes` ask the same of the
 files macOS ships under type 9, and keep nothing of their content. `apple`
@@ -366,6 +373,101 @@ def ownread(mnt, out):
             expect = want.get(name, stream if name.startswith("stream-") else None)
             if expect and got.get("read") == "ok":
                 entry["match"] = got["sha256"] == expect
+            log.write(json.dumps(entry, ensure_ascii=True) + "\n")
+            log.flush()
+            time.sleep(READ_GAP)
+    reader.close()
+
+
+# -- the layout, asked of the probe's own files -----------------------------
+
+MARK = 0xCC
+
+
+def layout_cases():
+    """Each file `layout` writes: name, type, place, header size, payload, and
+    the content a read that takes the payload after the marker as the file's
+    content gives, cut or extended to the header's size."""
+    cases = []
+
+    def add(name, payload, size, kind=9, place="inline", content=b""):
+        cases.append({"name": name, "type": kind, "place": place, "size": size, "payload": payload,
+                      "content": content})
+
+    c40 = text(40, 50)
+    for v in range(256):
+        add("mark-%02x" % v, bytes([v]) + c40, 40, content=c40)
+    for n in (0, 1, 2, 15, 16, 17, 100, 111, 112, 1000, 3000, 3787, 3788, 4000, 8192,
+              65535, 65536, 65537, 100000, 200000, 1 << 20):
+        c = text(n, 51)
+        add("raw-%07d" % n, bytes([MARK]) + c, n, content=c)
+    for k in (1, 10, 39, 40):
+        add("under-%02d" % k, bytes([MARK]) + c40, 40 - k, content=c40)
+    for k in (1, 100, 4056, 4096, 65536, 1 << 20, 1 << 24):
+        add("over-%08d" % k, bytes([MARK]) + c40, 40 + k, content=c40)
+    add("marker-size0", bytes([MARK]), 0)
+    add("marker-size5", bytes([MARK]), 5)
+    add("marker-twice", bytes([MARK, MARK]) + c40, 41, content=bytes([MARK]) + c40)
+    c = text(1000, 52)
+    big = text(200 * 1024, 53)
+    chunks = [big[i:i + 65536] for i in range(0, len(big), 65536)]
+    add("t10-raw", bytes([MARK]) + c, len(c), kind=10, place="fork", content=c)
+    add("t10-table", fork([bytes([MARK]) + c]), len(c), kind=10, place="fork", content=c)
+    add("t10-table-multi", fork([bytes([MARK]) + x for x in chunks]), len(big), kind=10, place="fork",
+        content=big)
+    add("t10-table-plain", fork([c]), len(c), kind=10, place="fork", content=c)
+    add("t9-table", fork([bytes([MARK]) + c]), len(c), content=c)
+    return cases
+
+
+def layout(directory, out):
+    c = libc()
+    os.makedirs(directory, exist_ok=True)
+    record = []
+    for case in layout_cases():
+        hdr = header(case["type"], case["size"])
+        if case["place"] == "inline":
+            decmpfs, resource = hdr + case["payload"], None
+        else:
+            decmpfs, resource = hdr, case["payload"]
+        record.append({"name": case["name"], "type": case["type"], "place": case["place"],
+                       "size": case["size"], "payload_len": len(case["payload"]),
+                       "stored": store_raw(c, os.path.join(directory, case["name"]).encode(), decmpfs, resource)})
+    write_json(out, record)
+
+
+def layoutread(mnt, out):
+    """Each file `layout` wrote, read through the kernel, against its content
+    taken as the payload after the marker: the same, a prefix, the content and
+    then what bytes, or something else, shown by its first and last bytes."""
+    reader = Reader()
+    with open(out, "w") as log:
+        for case in layout_cases():
+            entry = {"file": case["name"], "size": case["size"]}
+            got, t0, t1 = reader.read(os.path.join(mnt, case["name"]), "data")
+            entry["t0"], entry["t1"] = t0, t1
+            entry["read"] = got["read"]
+            if "error" in got:
+                entry["error"] = got["error"]
+            if got["read"] == "ok":
+                data = bytes.fromhex(got["data"])
+                want = case["content"]
+                entry["len"] = len(data)
+                if data == want[:case["size"]] and len(data) == min(case["size"], len(want)):
+                    entry["verdict"] = "content, cut to the size" if case["size"] < len(want) else "content"
+                elif data.startswith(want) and want:
+                    rest = data[len(want):]
+                    entry["verdict"] = "content, then more"
+                    entry["more"] = len(rest)
+                    entry["more_values"] = sorted(set(rest))[:16]
+                elif not data:
+                    entry["verdict"] = "nothing"
+                else:
+                    entry["verdict"] = "other"
+                    entry["first_difference"] = common_prefix(data, want)
+                    entry["head"] = data[:64].hex()
+                    entry["tail"] = data[-64:].hex()
+                    entry["values"] = sorted(set(data))[:16]
             log.write(json.dumps(entry, ensure_ascii=True) + "\n")
             log.flush()
             time.sleep(READ_GAP)
@@ -1038,6 +1140,7 @@ GUARDED = {"apple", "guessworker", "copies", "copyread", "copylog", "schemes"}
 
 def main(argv):
     commands = {"codecs": (codecs, 1), "own": (own, 3), "ownread": (ownread, 2),
+                "layout": (layout, 2), "layoutread": (layoutread, 2),
                 "ownlog": (ownlog, 3), "apple": (apple, None), "guessworker": (guessworker, 1),
                 "copies": (copies, 4),
                 "copyread": (copyread, 3), "copylog": (copylog, 4), "schemes": (schemes, 3)}

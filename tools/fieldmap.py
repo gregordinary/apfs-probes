@@ -13,11 +13,12 @@ column dropped, so that the same complaint about different values reads
 the same. A change that ran past the checker's time limit has the
 signature "timeout". Adjacent bytes of one block with the same signature
 form a run, and so do adjacent bytes the checker did not notice. For each
-noticed run the report gives the words in its first complaint (its first
-error or warning line) that look like field names: lower-case words joined
-by underscores, with any index or member that follows them. Names from the
-complaints that follow come after "also", since a wrong value can set off
-complaints about the fields that depend on it.
+noticed run the report gives the words in its first complaint (error or
+warning line) that names anything, where names are words that look like
+field names: lower-case words joined by underscores, with any index or
+member that follows them. Names from the other complaints come after
+"also", since a wrong value can set off complaints about the fields that
+depend on it.
 
 --types gathers the noticed runs of every block of one type and subtype,
 and marks a run that not every block of that kind shares with how many do:
@@ -87,8 +88,10 @@ class Sweep:
 
 
 def lead(sig):
-    """The first complaint of a signature: its first error or warning line."""
-    return next((l for l in sig if l.startswith(("error", "warning"))), sig[0])
+    """The first complaint of a signature that names a field, else its first
+    error or warning line."""
+    complaints = [l for l in sig if l.startswith(("error", "warning"))] or list(sig)
+    return next((l for l in complaints if NAME.search(l)), complaints[0])
 
 
 def names(lines):

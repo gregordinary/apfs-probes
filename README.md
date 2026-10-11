@@ -66,6 +66,11 @@ A probe that takes arguments gets them from the `args` input:
   mounted again; and libcompression's encoding of small known inputs by every
   algorithm its public header declares.
 
+- `lzbitmap`: libcompression's LZBITMAP encoding of 1,366 small inputs that
+  each vary one thing a step at a time, such as a run's length, a match's
+  distance or length, or the literals between two copies of the same bytes,
+  each decoded back and kept beside its input.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

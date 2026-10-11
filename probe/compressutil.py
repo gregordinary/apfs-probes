@@ -6,6 +6,7 @@
     compressutil.py own ALGORITHMS.json DIR OUT.json
     compressutil.py verify MNT OUT.json
     compressutil.py streams ALGORITHMS.json DIR OUT.json
+    compressutil.py study ALGORITHMS.json DIR OUT.json
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -19,7 +20,11 @@ file records is a number this script is given as an argument of the layout,
 never one it infers. `verify` reads every file under MNT through the kernel
 and compares it with the content its name says it holds. `streams` keeps
 each algorithm's encoding of a set of small inputs, by
-compression_encode_buffer, with the inputs beside them.
+compression_encode_buffer, with the inputs beside them. `study` does the same
+for LZBITMAP alone over a larger set, each family of inputs varying one thing
+a step at a time: where the encoder stops storing raw, the length of a run of
+one byte, the distance of one match, the length of one match at a fixed
+distance, and the literals between two copies of a run.
 """
 
 import ctypes
@@ -276,6 +281,59 @@ def stream_inputs():
     return inputs
 
 
+def study_inputs():
+    """Inputs that each show the LZBITMAP encoder one thing, a step at a time."""
+    inputs = {}
+    # Where the encoder stops storing a block raw.
+    for n in range(120, 301):
+        inputs["text-%d" % n] = text(n, 100)
+    # One byte repeated: a literal or few, then one match at distance one, of every length.
+    for n in list(range(1, 401)) + [511, 512, 513, 1000, 4095, 4096, 4097, 16384, 65535, 65536]:
+        inputs["run-%d" % n] = b"a" * n
+    # K random bytes, then the same K again: one match of length K at distance K.
+    for k in list(range(2, 300)) + [511, 512, 1000, 2047, 2048, 4095, 4096, 8192, 16383,
+                                   16384, 32767, 32768]:
+        p = pattern(k, 200)
+        inputs["repeat-%d" % k] = p + p
+    # 64 random bytes, then L more bytes copied from 64 back: one match of length L at
+    # distance 64, overlapping itself once L passes 64.
+    p = pattern(64, 300)
+    for length in range(1, 257):
+        inputs["dist64-%d" % length] = (p * 5)[:64 + length]
+    # 32 random bytes, G random bytes, then the first 32 again: G literals between the two.
+    a = pattern(32, 301)
+    for gap in range(0, 200):
+        inputs["gap-%d" % gap] = a + pattern(gap, 1000 + gap) + a
+    # A run, other bytes, the same run: the second at a distance past the first.
+    for n in (16, 64, 256):
+        for gap in (1, 7, 100):
+            inputs["runs-%d-%d" % (n, gap)] = b"x" * n + pattern(gap, 2000 + gap) + b"x" * n
+    return inputs
+
+
+def study(algos_json, directory, out):
+    with open(algos_json) as f:
+        algo = json.load(f)["COMPRESSION_LZBITMAP"]
+    codec = Codec()
+    for sub in ("in", "lzbitmap"):
+        os.makedirs(os.path.join(directory, sub), exist_ok=True)
+    record = {}
+    for name, data in study_inputs().items():
+        with open(os.path.join(directory, "in", name), "wb") as f:
+            f.write(data)
+        entry = {"input_len": len(data)}
+        record[name] = entry
+        encoded = codec.encode(data, algo)
+        if encoded is None:
+            entry["encoded"] = None
+            continue
+        with open(os.path.join(directory, "lzbitmap", name), "wb") as f:
+            f.write(encoded)
+        entry["encoded_len"] = len(encoded)
+        entry["round_trip"] = codec.decode(encoded, len(data), algo) == data
+    write_json(out, record)
+
+
 def streams(algos_json, directory, out):
     with open(algos_json) as f:
         algos = json.load(f)
@@ -309,7 +367,7 @@ def streams(algos_json, directory, out):
 
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
-                "verify": (verify, 2), "streams": (streams, 3)}
+                "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

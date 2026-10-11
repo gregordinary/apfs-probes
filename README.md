@@ -52,6 +52,9 @@ A probe that takes arguments gets them from the `args` input:
   object by its checksum alone, a rule its header states with its sources,
   so the bytes are chosen by position rather than by meaning. The arguments
   `fresh` or `loaded`, and a shard `K/N`, share a sweep out between runs.
+  `tools/fieldmap.py` reads a sweep back as each block's fields: adjacent
+  bytes the checker complains about in the same words, with the names it
+  uses for them.
 
 ## What a run keeps
 

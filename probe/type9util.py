@@ -24,9 +24,9 @@ each algorithm's encoding of a known text. `ownread` reads each back through
 the kernel, and `ownlog` keeps what the system log says during each read.
 `layout` writes files that hold the probe's own content after the marker byte
 0xCC, which is how the files macOS ships under type 9 hold theirs: of sizes
-from 0 to 1 MiB, with every other marker value, with a header size that cuts
-or extends the content, and in the resource fork under type 10, alone and in
-type 8's table. `layoutread` reads each back against that content.
+from 0 to 1 MiB and every size where reading stops, with every other marker
+value, with a header size that cuts or extends the content, and in the
+resource fork under type 10, alone and in type 8's table. `layoutread` reads each back against that content.
 
 `apple`, `copies`, `copyread`, `copylog` and `schemes` ask the same of the
 files macOS ships under type 9, and keep nothing of their content. `apple`
@@ -405,6 +405,13 @@ def layout_cases():
         add("under-%02d" % k, bytes([MARK]) + c40, 40 - k, content=c40)
     for k in (1, 100, 4056, 4096, 65536, 1 << 20, 1 << 24):
         add("over-%08d" % k, bytes([MARK]) + c40, 40 + k, content=c40)
+    # Where the content stops being read, by one byte, and where a header
+    # size past the content stops being read.
+    for n in range(3001, 3787):
+        c = text(n, 54)
+        add("limit-raw-%04d" % n, bytes([MARK]) + c, n, content=c)
+    for size in (8192, 16384, 32768, 65535, 65536, 65537):
+        add("limit-size-%05d" % size, bytes([MARK]) + c40, size, content=c40)
     add("marker-size0", bytes([MARK]), 0)
     add("marker-size5", bytes([MARK]), 5)
     add("marker-twice", bytes([MARK, MARK]) + c40, 41, content=bytes([MARK]) + c40)

@@ -97,7 +97,8 @@ A probe that takes arguments gets them from the `args` input:
   a time, are read back by the kernel on a second image, which is not kept.
 - `type9layout`: compression type 9's layout, asked of files of this
   repository's content only: the content after the marker byte 0xCC at sizes
-  from 0 to 1 MiB, every other marker value, header sizes that cut or extend
+  from 0 to 1 MiB and at every size where the kernel stops reading it, every
+  other marker value, header sizes that cut or extend
   the content, and type 10 with the content in the resource fork, alone and in
   type 8's table; each file read back by the kernel after a remount.
 

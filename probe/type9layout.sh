@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Compression type 9's layout, asked of files of this script's own content
 # only: the content after the marker byte 0xCC, as the files macOS ships under
-# type 9 hold theirs, at sizes from 0 to 1 MiB; every other marker value; a
-# header size that cuts or extends the content; and type 10, the content in
-# the resource fork, alone and in type 8's table. Each file is read back by the
-# kernel after a remount, and the system log over the reads is kept.
+# type 9 hold theirs, at sizes from 0 to 1 MiB and at every size where the
+# kernel stops reading it; every other marker value; a header size that cuts
+# or extends the content; and type 10, the content in the resource fork, alone
+# and in type 8's table. Each file is read back by the kernel after a remount,
+# and the system log over the reads is kept.
 #
 # Usage: type9layout.sh OUTDIR
 

@@ -85,6 +85,16 @@ A probe that takes arguments gets them from the `args` input:
   executables, are copied by `ditto --hfsCompression` onto an attached image
   and onto the runner's own volume, and through `aa archive` and
   `aa extract`, with each file's type recorded.
+- `type9`: what the kernel reads compression type 9 as, the type of about
+  30,000 small files each macOS release ships. Files of type 9 and 10 that
+  hold this repository's bytes, varied one field at a time, are read back by
+  the kernel on an attached image, with the system log's messages during each
+  read. Every file of type 9 or 10 under `/System`, `/usr`, `/Library`,
+  `/bin` and `/sbin` is read on the runner itself: the records keep its path,
+  its sizes, verdicts about its compressed form against its content, and the
+  SHA-256 of either where it is 32 bytes or longer, never the bytes. Copies
+  of a sample's compression attribute, unchanged and with one byte changed at
+  a time, are read back by the kernel on a second image, which is not kept.
 
 ## What a run keeps
 

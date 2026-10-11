@@ -85,6 +85,12 @@ A probe that takes arguments gets them from the `args` input:
   executables, are copied by `ditto --hfsCompression` onto an attached image
   and onto the runner's own volume, and through `aa archive` and
   `aa extract`, with each file's type recorded.
+- `inlinelimit`: where the kernel stops reading content kept after the
+  compression header. Types 3, 7, 11 and 13 holding this repository's content
+  compressed, zlib's raw chunk under type 3, and type 9, at attribute lengths
+  a byte apart from 3,790 to 3,815, each with content that does not compress
+  and with content of more than twice its encoding, read back by the kernel
+  after a remount.
 - `type9`: what the kernel reads compression type 9 as, the type of about
   30,000 small files each macOS release ships. Files of type 9 and 10 that
   hold this repository's bytes, varied one field at a time, are read back by

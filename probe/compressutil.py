@@ -16,6 +16,8 @@
     compressutil.py survey ROOT OUT.json SECONDS
     compressutil.py typesof DIR OUT.json
     compressutil.py writers DIR OUT.json
+    compressutil.py inline DIR OUT.json
+    compressutil.py inlineread MNT RECORD.json OUT.jsonl
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -55,7 +57,11 @@ through /System/Volumes, and tallies the compression type of every compressed
 regular file, until SECONDS run out. `typesof` lists every file under DIR
 with its compression type. `writers` stages the contents a compressing copy
 is given: `stage`'s, a 20 MiB text, and copies of three of Apple's
-executables.
+executables. `inline` stores content after the header under types 3, 7, 11,
+13 and 9, and zlib's raw chunk under type 3, at attribute lengths a byte apart
+across 3,802, each with content that does not compress and, for the encoded
+types, content of more than twice the encoding; `inlineread` reads each back
+against the content it was made from.
 """
 
 import ctypes
@@ -846,12 +852,142 @@ def writers(directory, out):
     write_json(out, record)
 
 
+# Where the kernel stops reading content kept after the header, asked of every
+# type that keeps it there: attribute lengths a byte apart across the length
+# at which it stops reading type 9.
+INLINE_LENGTHS = range(3790, 3816)
+HEADER_LEN = 16
+# The algorithm numbers of the types kept inline: the public header's LZFSE and
+# LZBITMAP, and 0x900, which the kernel names for types 7 and 8.
+INLINE_ENCODERS = {7: 0x900, 11: 0x801, 13: 0x702}
+
+
+def mixed(n, seed):
+    """n bytes that compress to less than half: lines of a 16-digit token."""
+    out = bytearray()
+    i = 0
+    while len(out) < n:
+        token = hashlib.sha256(b"%d:%d" % (seed, i)).hexdigest()[:16].encode()
+        out += b"%s entry %06d\n" % (token, i)
+        i += 1
+    return bytes(out[:n])
+
+
+INLINE_CONTENTS = {"random": lambda n: pattern(n, 70), "mixed": lambda n: mixed(n, 71)}
+
+
+def inline_encoder(kind, codec):
+    import zlib
+    if kind == 3:
+        return lambda data: zlib.compress(data, 9)
+    if kind == 9:
+        return lambda data: b"\xcc" + data
+    if kind == "3-raw":
+        return lambda data: b"\xff" + data
+    algo = INLINE_ENCODERS[kind]
+    return lambda data: codec.encode(data, algo) or b""
+
+
+def fit(encode, make, target):
+    """The content size, at most one chunk, whose encoding is TARGET bytes
+    long, or None."""
+    lo, hi = 1, CHUNK
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if len(encode(make(mid))) < target:
+            lo = mid + 1
+        else:
+            hi = mid
+    for d in range(400):
+        for n in (lo - d, lo + d):
+            if 1 <= n <= CHUNK and len(encode(make(n))) == target:
+                return n
+    return None
+
+
+def inline_cases(codec):
+    """Each file `inline` writes: name, type, the content's family and size,
+    and the encoding kept after the header."""
+    cases = []
+    kinds = [3, 7, 11, 13, "3-raw", 9]
+    for kind in kinds:
+        encode = inline_encoder(kind, codec)
+        families = ["random", "mixed"] if kind not in ("3-raw", 9) else ["random"]
+        for family in families:
+            make = INLINE_CONTENTS[family]
+            controls = [("control", 500)]
+            for label, target in controls + [("len-%d" % L, L) for L in INLINE_LENGTHS]:
+                n = fit(encode, make, target - HEADER_LEN)
+                name = "t%s-%s-%s" % (kind, family, label)
+                cases.append({"name": name, "type": 3 if kind == "3-raw" else kind, "family": family,
+                              "content_len": n, "stream": encode(make(n)) if n else None})
+    return cases
+
+
+def inline(directory, out):
+    codec = Codec()
+    lib = libc()
+    os.makedirs(directory, exist_ok=True)
+    record = []
+    for case in inline_cases(codec):
+        entry = {k: v for k, v in case.items() if k != "stream"}
+        record.append(entry)
+        if case["stream"] is None:
+            entry["skipped"] = "no content size encodes to that length"
+            continue
+        value = header(case["type"], case["content_len"]) + case["stream"]
+        entry["attr_len"] = len(value)
+        path = os.path.join(directory, case["name"]).encode()
+        try:
+            os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+            entry["how"] = set_xattr(lib, path, DECMPFS, value)
+            os.chflags(path, stat.UF_COMPRESSED)
+        except OSError as e:
+            entry["error"] = errno.errorcode.get(e.errno, str(e.errno))
+    write_json(out, record)
+
+
+def inlineread(mnt, record_json, out):
+    """Each file `inline` wrote, read through the kernel in a process of its
+    own, against the content it was made from."""
+    import subprocess
+    with open(record_json) as f:
+        record = json.load(f)
+    with open(out, "w") as log:
+        for entry in record:
+            if "attr_len" not in entry or "error" in entry:
+                continue
+            want = INLINE_CONTENTS[entry["family"]](entry["content_len"])
+            got = {"file": entry["name"], "type": entry["type"], "attr_len": entry["attr_len"],
+                   "content_len": entry["content_len"]}
+            try:
+                child = subprocess.run([sys.executable, "-c", READ_CHILD, os.path.join(mnt, entry["name"])],
+                                       capture_output=True, text=True, timeout=10)
+                answer = json.loads(child.stdout or "{}")
+            except (subprocess.TimeoutExpired, ValueError):
+                answer = {"errno": -1}
+            if "errno" in answer:
+                got["read"] = "error %s" % errno.errorcode.get(answer["errno"], str(answer["errno"]))
+            elif answer["sha256"] == sha(want):
+                got["read"] = "content"
+            elif answer["len"] == 0:
+                got["read"] = "nothing"
+            elif answer["head"] == "00" * min(32, answer["len"]):
+                got["read"] = "zeros"
+            else:
+                got["read"] = "other"
+                got["len"] = answer["len"]
+            log.write(json.dumps(got) + "\n")
+            log.flush()
+
+
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
                 "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
                 "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3),
                 "flips": (flips, 2), "types": (types, 3), "typeread": (typeread, 2),
-                "survey": (survey, 3), "typesof": (typesof, 2), "writers": (writers, 2)}
+                "survey": (survey, 3), "typesof": (typesof, 2), "writers": (writers, 2),
+                "inline": (inline, 2), "inlineread": (inlineread, 3)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

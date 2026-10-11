@@ -13,6 +13,9 @@
     compressutil.py flips ALGORITHMS.json OUT.jsonl
     compressutil.py types ALGORITHMS.json DIR OUT.json
     compressutil.py typeread MNT OUT.jsonl
+    compressutil.py survey ROOT OUT.json SECONDS
+    compressutil.py typesof DIR OUT.json
+    compressutil.py writers DIR OUT.json
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -47,6 +50,12 @@ layout type 8 has, and a payload no algorithm wrote; beside them, LZFSE and
 LZBITMAP at the type numbers the kernel reads them under. `typeread` reads
 each of those files back through the kernel, each read in a process of its own
 under a time limit, so that a read that never returns costs one file.
+`survey` walks ROOT, without following symlinks or entering another volume
+through /System/Volumes, and tallies the compression type of every compressed
+regular file, until SECONDS run out. `typesof` lists every file under DIR
+with its compression type. `writers` stages the contents a compressing copy
+is given: `stage`'s, a 20 MiB text, and copies of three of Apple's
+executables.
 """
 
 import ctypes
@@ -724,11 +733,125 @@ def read_one(path, want):
     return entry
 
 
+def compression_of(path):
+    """The compression type and size a compressed file's header records, or
+    the error reading it."""
+    try:
+        value = get_xattr(path, DECMPFS)
+    except OSError as e:
+        return {"error": errno.errorcode.get(e.errno, str(e.errno))}
+    if len(value) < 16 or value[:4] != b"fpmc":
+        return {"error": "no fpmc header", "decmpfs_len": len(value)}
+    kind, size = struct.unpack("<IQ", value[4:16])
+    return {"type": kind, "header_size": size, "decmpfs_len": len(value)}
+
+
+# Subtrees a survey of ROOT does not enter: other volumes reached through
+# /System/Volumes, which the survey of the root they are mounted at covers.
+SURVEY_SKIP = {"/System/Volumes"}
+SURVEY_SAMPLES = 25
+
+
+def survey(root, out, seconds):
+    """Every regular file under ROOT, without following symlinks, until the
+    time budget runs out: how many there are, and for each compression type
+    found, how many files record it, their sizes, the device they are on, the
+    directories three levels down that hold them, and the first few paths."""
+    import time
+    start = time.monotonic()
+    deadline = start + float(seconds)
+    files = compressed = unreadable = 0
+    kinds = {}
+    stack = [root]
+    complete = True
+    while stack:
+        if time.monotonic() > deadline:
+            complete = False
+            break
+        top = stack.pop()
+        try:
+            entries = sorted(os.scandir(top), key=lambda e: e.name)
+        except OSError:
+            unreadable += 1
+            continue
+        for entry in entries:
+            path = entry.path
+            try:
+                st = entry.stat(follow_symlinks=False)
+            except OSError:
+                unreadable += 1
+                continue
+            if stat.S_ISDIR(st.st_mode):
+                if path not in SURVEY_SKIP:
+                    stack.append(path)
+                continue
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            files += 1
+            if not getattr(st, "st_flags", 0) & stat.UF_COMPRESSED:
+                continue
+            compressed += 1
+            got = compression_of(path.encode())
+            key = str(got.get("type", got.get("error")))
+            k = kinds.setdefault(key, {"files": 0, "bytes": 0, "devices": {}, "dirs": {},
+                                       "samples": []})
+            k["files"] += 1
+            k["bytes"] += got.get("header_size", 0)
+            dev = str(st.st_dev)
+            k["devices"][dev] = k["devices"].get(dev, 0) + 1
+            d = "/".join(path.split("/")[:4])
+            k["dirs"][d] = k["dirs"].get(d, 0) + 1
+            if len(k["samples"]) < SURVEY_SAMPLES:
+                k["samples"].append(path)
+    write_json(out, {"root": root, "complete": complete,
+                     "seconds": round(time.monotonic() - start, 1), "files": files,
+                     "compressed": compressed, "unreadable": unreadable, "types": kinds})
+
+
+def typesof(directory, out):
+    """Every regular file under DIRECTORY: its size, flags and, where it is
+    compressed, the type its header records."""
+    record = []
+    for top, dirs, files in os.walk(directory):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(top, name)
+            st = os.lstat(path)
+            entry = {"file": os.path.relpath(path, directory), "size": st.st_size,
+                     "flags": "0x%x" % getattr(st, "st_flags", 0)}
+            if getattr(st, "st_flags", 0) & stat.UF_COMPRESSED:
+                entry.update(compression_of(path.encode()))
+            record.append(entry)
+    write_json(out, record)
+
+
+def writers(directory, out):
+    """Contents for a compressing copy to choose a type for: those `stage`
+    writes, a large text, and copies of three of Apple's executables."""
+    import shutil
+    stage(directory, out)
+    with open(out) as f:
+        record = json.load(f)
+    big = text(20 * 1024 * 1024, 30)
+    with open(os.path.join(directory, "text-20971520"), "wb") as f:
+        f.write(big)
+    record["text-20971520"] = {"size": len(big), "sha256": sha(big)}
+    for src in ("/bin/ls", "/bin/zsh", "/usr/lib/dyld"):
+        name = "copy-" + src.strip("/").replace("/", "-")
+        try:
+            shutil.copyfile(src, os.path.join(directory, name))
+            record[name] = {"size": os.path.getsize(os.path.join(directory, name)), "from": src}
+        except OSError as e:
+            record[name] = {"error": errno.errorcode.get(e.errno, str(e.errno))}
+    write_json(out, record)
+
+
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
                 "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
                 "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3),
-                "flips": (flips, 2), "types": (types, 3), "typeread": (typeread, 2)}
+                "flips": (flips, 2), "types": (types, 3), "typeread": (typeread, 2),
+                "survey": (survey, 3), "typesof": (typesof, 2), "writers": (writers, 2)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

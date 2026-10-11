@@ -78,6 +78,13 @@ A probe that takes arguments gets them from the `args` input:
   algorithm wrote; LZFSE and LZBITMAP at the numbers the kernel reads them
   under are the controls. Each file is read back after a remount, in a
   process of its own under a time limit.
+- `typesurvey`: which compression types macOS itself writes. Every compressed
+  file under `/System`, `/usr`, `/bin`, `/sbin`, `/Library` and `/Applications`
+  is tallied by the type its header records, each tree within a time budget
+  of its own; and contents of several kinds, among them copies of Apple's own
+  executables, are copied by `ditto --hfsCompression` onto an attached image
+  and onto the runner's own volume, and through `aa archive` and
+  `aa extract`, with each file's type recorded.
 
 ## What a run keeps
 

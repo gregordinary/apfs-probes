@@ -54,7 +54,10 @@ A probe that takes arguments gets them from the `args` input:
   `fresh` or `loaded`, and a shard `K/N`, share a sweep out between runs.
   `tools/fieldmap.py` reads a sweep back as each block's fields: adjacent
   bytes the checker complains about in the same words, with the names it
-  uses for them.
+  uses for them. With `--records` it reads the B-tree nodes of the swept
+  image with the layout the sweep finds, checks that reading against every
+  node, and gives each byte of a key or value its place in a record, so the
+  same byte of every record of a kind is read together.
 
 ## What a run keeps
 

@@ -7,6 +7,7 @@
     compressutil.py verify MNT OUT.json
     compressutil.py streams ALGORITHMS.json DIR OUT.json
     compressutil.py study ALGORITHMS.json DIR OUT.json
+    compressutil.py oracle ALGORITHMS.json OUT.jsonl
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -24,7 +25,9 @@ compression_encode_buffer, with the inputs beside them. `study` does the same
 for LZBITMAP alone over a larger set, each family of inputs varying one thing
 a step at a time: where the encoder stops storing raw, the length of a run of
 one byte, the distance of one match, the length of one match at a fixed
-distance, and the literals between two copies of a run.
+distance, and the literals between two copies of a run. `oracle` encodes a
+few of those inputs, changes every bit of each stream after its first block
+header in turn, and keeps what libcompression decodes each changed stream to.
 """
 
 import ctypes
@@ -334,6 +337,37 @@ def study(algos_json, directory, out):
     write_json(out, record)
 
 
+# The study inputs the oracle changes: each small, each holding one match or a few.
+ORACLE_BASES = ["run-145", "run-200", "run-300", "run-400", "dist64-100", "dist64-150",
+                "repeat-100", "repeat-140", "repeat-160", "gap-10", "gap-40", "runs-64-7",
+                "text-145", "text-200"]
+
+
+def oracle(algos_json, out):
+    with open(algos_json) as f:
+        algo = json.load(f)["COMPRESSION_LZBITMAP"]
+    codec = Codec()
+    inputs = study_inputs()
+    # A line at a time, so that a decoder fault partway through keeps every line before it.
+    with open(out, "w", buffering=1) as f:
+        for base in ORACLE_BASES:
+            data = inputs[base]
+            encoded = codec.encode(data, algo)
+            f.write(json.dumps({"base": base, "input": data.hex(), "stream": encoded.hex()}) + "\n")
+            # Everything after the four-byte signature and the first block's two lengths.
+            for at in range(10, len(encoded)):
+                for bit in range(8):
+                    changed = bytearray(encoded)
+                    changed[at] ^= 1 << bit
+                    room = 2 * len(data) + 64
+                    dst = ctypes.create_string_buffer(room)
+                    src = ctypes.create_string_buffer(bytes(changed), len(changed))
+                    n = codec.lib.compression_decode_buffer(dst, room, src, len(changed), None,
+                                                           algo)
+                    f.write(json.dumps({"base": base, "at": at, "bit": bit, "produced": n,
+                                        "output": dst.raw[:n].hex()}) + "\n")
+
+
 def streams(algos_json, directory, out):
     with open(algos_json) as f:
         algos = json.load(f)
@@ -367,7 +401,8 @@ def streams(algos_json, directory, out):
 
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
-                "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3)}
+                "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
+                "oracle": (oracle, 2)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

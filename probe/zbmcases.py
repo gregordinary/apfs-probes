@@ -319,6 +319,12 @@ def cases():
          stream(raw(LETTERS), block(32, lits=b"wxyz", masks=b"\x00",
                                     entries=[(0xF4, 0), (0x04, 0)])), 48)
 
+    # A last selector that is the block's last half-byte, reached through the whole table:
+    # every selector is 0, and reads a mask, 0xFF for the first step and 0 for the 35 after.
+    # A count read where 8 or fewer bytes remain would read past the block's end.
+    case("last-selector-at-block-end",
+         stream(block(288, lits=LETTERS[:8], masks=b"\xff" + bytes(35), sel=[0, 0])), 288)
+
     # An end block whose length is not six: shorter, and longer with bytes after its header.
     case("end-length-5", stream(raw(LETTERS), end=u24(5) + u24(0) + b"\x00" * 10), 16)
     case("end-length-7", stream(raw(LETTERS), end=u24(7) + u24(0) + b"\x00" * 10), 16)

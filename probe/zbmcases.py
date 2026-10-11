@@ -241,6 +241,42 @@ def cases():
     case("magic-zbn", b"ZBN\x09" + raw(LETTERS) + END, 16)
     case("magic-lower", b"zbm\x09" + raw(LETTERS) + END, 16)
 
+    # Every value of the signature's fourth byte.
+    for b in range(256):
+        case("version-%02x" % b, b"ZBM" + bytes([b]) + raw(LETTERS) + END, 16)
+
+    # Where the limit on a repetition count lies: counts from 4,096 to 65,534 in a full block,
+    # and those up to 16,385 in a block of 808 bytes, which needs 100 (a longer count is more
+    # selectors than that block may hold).
+    for total in (4096, 4097, 4111, 4112, 5000, 8191, 8192, 8193, 16383, 16384, 16385, 32767,
+                  32768, 32769, 65534):
+        case("count-full-%d" % total, stream(block(32768, lits=LETTERS[:8],
+                                                   sel=[3, 4] + count_nibbles(total),
+                                                   entries=[LIT8, COPY8])), 32768)
+        if total <= 16385:
+            case("count-short-%d" % total, stream(block(808, lits=LETTERS[:8],
+                                                        sel=[3, 4] + count_nibbles(total),
+                                                        entries=[LIT8, COPY8])), 808)
+
+    # The order of the three offsets. Selectors that start among the distances: 64 literals
+    # in eight steps, then selector 1, whose distance byte is the selector area's first byte,
+    # 0x33 (51), and whose mask is its second, 0x33, taking 4 more literals.
+    sel = [3] * 8 + [1] + FILL
+    lits = (LETTERS * 5)[:68]
+    o1 = 15 + len(lits)
+    case("selectors-start-at-distances", stream(block(72 + F, lits=lits, sel=sel,
+                                                      entries=entries_with_fill([LIT8]),
+                                                      offs=(o1, o1 + 1, o1))), 72 + F)
+    # The same block with its selectors one byte later, where they would begin in order.
+    case("selectors-start-after-distances", stream(block(72 + F, lits=lits, dists=b"\x33",
+                                                         masks=b"\x33", sel=sel,
+                                                         entries=entries_with_fill([LIT8]))),
+         72 + F)
+    # Selectors that start in the table, after a raw block: all three offsets are 15, the
+    # table's first byte, 0xF4, is selector 4 and a count marker, and its second, 0, ends the
+    # count at 4 steps of entry 1's copies.
+    case("selectors-start-in-table", stream(raw(LETTERS), block(32, entries=[(0xF4, 0), COPY8])),
+         48)
     # An end block whose length is not six: shorter, and longer with bytes after its header.
     case("end-length-5", stream(raw(LETTERS), end=u24(5) + u24(0) + b"\x00" * 10), 16)
     case("end-length-7", stream(raw(LETTERS), end=u24(7) + u24(0) + b"\x00" * 10), 16)

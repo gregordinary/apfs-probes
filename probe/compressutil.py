@@ -10,6 +10,7 @@
     compressutil.py oracle ALGORITHMS.json OUT.jsonl
     compressutil.py rules ALGORITHMS.json OUT.jsonl
     compressutil.py corpus ALGORITHMS.json DIR OUT.json
+    compressutil.py flips ALGORITHMS.json OUT.jsonl
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -34,7 +35,10 @@ header in turn, and keeps what libcompression decodes each changed stream to.
 three buffers: zeroed, filled with 0xA5, and filled with 0xC3 behind 64 bytes
 of 0x5A that are not part of it, so that an output taken from the buffer
 rather than the stream shows. `corpus` keeps LZBITMAP's encoding of larger
-inputs than `study`'s, of many blocks and of every kind of step.
+inputs than `study`'s, of many blocks and of every kind of step. `flips` does
+what `oracle` does for more streams, among them streams of two blocks and
+streams whose steps read masks and two-byte distances, and also decodes every
+prefix of each; it keeps a digest of each output rather than the output.
 """
 
 import ctypes
@@ -466,6 +470,60 @@ def corpus(algos_json, directory, out):
     write_json(out, record)
 
 
+def flip_inputs():
+    """The inputs `flips` encodes, changes and cuts: the `oracle` bases and more."""
+    study = study_inputs()
+    inputs = {name: study[name] for name in ORACLE_BASES}
+    inputs["text-600"] = text(600, 800)
+    inputs["text-1500"] = text(1500, 801)
+    rec = bytearray()
+    for i in range(60):
+        rec += struct.pack("<IIHH8s", i, i * 7919 % 65536, i % 13, 0xBEEF, b"name%04d" % i)
+    inputs["records-1200"] = bytes(rec)
+    mixed = bytearray()
+    for i in range(1, 40):
+        mixed += text(i % 30 + 1, 810 + i % 3) if i % 2 else pattern(i % 20 + 1, 820 + i)
+    inputs["mixed"] = bytes(mixed)
+    p = pattern(300, 830)
+    inputs["distance-300"] = p + text(40, 831) + p
+    sparse = bytearray(b"pattern!" * 128)
+    for i in range(0, len(sparse), 37):
+        sparse[i] ^= 0x55
+    inputs["sparse-1024"] = bytes(sparse)
+    inputs["two-blocks"] = text(33000, 832)
+    inputs["zeros-text"] = bytes(3000) + text(300, 833)
+    return inputs
+
+
+def flips(algos_json, out):
+    with open(algos_json) as f:
+        algo = json.load(f)["COMPRESSION_LZBITMAP"]
+    codec = Codec()
+
+    def run(stream, room):
+        dst = ctypes.create_string_buffer(room)
+        src = ctypes.create_string_buffer(stream, len(stream))
+        n = codec.lib.compression_decode_buffer(dst, room, src, len(stream), None, algo)
+        return n, hashlib.sha256(dst.raw[:n]).hexdigest()[:24]
+
+    with open(out, "w", buffering=1 << 16) as f:
+        for base, data in flip_inputs().items():
+            encoded = codec.encode(data, algo)
+            room = 2 * len(data) + 64
+            f.write(json.dumps({"base": base, "input": data.hex(), "stream": encoded.hex()}) + "\n")
+            for at in range(4, len(encoded)):
+                for bit in range(8):
+                    changed = bytearray(encoded)
+                    changed[at] ^= 1 << bit
+                    n, digest = run(bytes(changed), room)
+                    f.write(json.dumps({"base": base, "at": at, "bit": bit, "produced": n,
+                                        "digest": digest}) + "\n")
+            for length in range(len(encoded)):
+                n, digest = run(encoded[:length], room)
+                f.write(json.dumps({"base": base, "cut": length, "produced": n,
+                                    "digest": digest}) + "\n")
+
+
 def streams(algos_json, directory, out):
     with open(algos_json) as f:
         algos = json.load(f)
@@ -500,7 +558,8 @@ def streams(algos_json, directory, out):
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
                 "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
-                "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3)}
+                "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3),
+                "flips": (flips, 2)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

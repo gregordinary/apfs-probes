@@ -18,6 +18,10 @@ first, takes the next literal; each 0 bit copies the byte the current distance b
 
 Every case is named for its question. `cases()` returns (name, stream, expected decoded
 length) triples; the expected length only sizes the buffer the decoder is given.
+
+The decoder refuses a compressed block longer than the block stored raw would be, so every
+case below makes its blocks decode to more than they hold: after the steps that ask its
+question, a block repeats one step of copies, from table entry 11 (selector 14), 30 times.
 """
 
 END = b"\x06\x00\x00\x00\x00\x00"
@@ -70,6 +74,31 @@ def stream(*blocks, end=END):
 
 
 LETTERS = b"ABCDEFGHIJKLMNOP"
+# Table entry 11, selector 14: a step that copies 8 bytes at the current distance.
+FILL_SEL = 14
+FILL_STEPS = 30
+FILL = [FILL_SEL, 15, 15, FILL_STEPS - 4 - 15]
+
+
+def entries_with_fill(entries):
+    entries = list(entries) + [(0, 0)] * (11 - len(entries))
+    return entries[:11] + [COPY8]
+
+
+def fblock(dlen, sel, entries=(), **kw):
+    """A block whose selectors end with the fill, decoding to `dlen` plus the fill's bytes."""
+    return block(dlen + 8 * FILL_STEPS, sel=list(sel) + FILL, entries=entries_with_fill(entries),
+                 **kw)
+
+
+def count_nibbles(n):
+    """The selectors after a step's own that repeat it n times in all, n of 4 or more."""
+    n -= 4
+    out = [15]
+    while n >= 15:
+        out.append(15)
+        n -= 15
+    return out + [n]
 
 
 def cases():
@@ -78,117 +107,143 @@ def cases():
     def case(name, s, size):
         out.append((name, s, size))
 
-    # Controls: the builder itself, held to the decoder on streams that leave nothing open.
-    case("ctl-empty", stream(), 0)
-    case("ctl-raw", stream(raw(LETTERS)), 16)
-    case("ctl-literals", stream(block(16, lits=LETTERS, sel=[3, 3], entries=[LIT8])), 16)
-    case("ctl-copy", stream(block(64, lits=LETTERS[:8], sel=[3, 4, 15, 3], entries=[LIT8, COPY8])), 64)
-    case("ctl-two-blocks", stream(block(16, lits=LETTERS, sel=[3, 3], entries=[LIT8]),
-                                  block(16, lits=LETTERS[::-1], sel=[3, 3], entries=[LIT8])), 32)
+    F = 8 * FILL_STEPS
+    # Controls: the builder, held to the decoder on streams that leave nothing open.
+    case("ctl-fill", stream(fblock(16, [3, 3], [LIT8], lits=LETTERS)), 16 + F)
+    case("ctl-two-blocks", stream(fblock(16, [3, 3], [LIT8], lits=LETTERS),
+                                  fblock(16, [3, 3], [LIT8], lits=LETTERS[::-1])), 32 + 2 * F)
+
+    # The size rule's edge: one block of 8 literals and a count of 4 copy steps, 42 bytes long,
+    # given decoded lengths that make it 2 and 1 bytes shorter than raw, the same length, and
+    # 1 and 2 bytes longer.
+    for dlen, name in ((38, "shorter-by-2"), (37, "shorter-by-1"), (36, "equal"),
+                       (35, "longer-by-1"), (34, "longer-by-2")):
+        case("size-" + name, stream(block(dlen, lits=LETTERS[:8], sel=[3, 4, 15, 0],
+                                          entries=[LIT8, COPY8])), dlen)
 
     # A distance: 16 literals, then one step of mask 0 at distance d (selector 1 reads a mask
-    # and one distance byte). Below 8 the copy reads bytes of its own step; 0 and past 16
-    # reach outside what has been decoded.
+    # and one distance byte), then the fill at that distance. Below 8 a copy reads bytes of
+    # its own step; 0 and past 16 reach outside what has been decoded.
     for d in (0, 1, 2, 4, 5, 7, 8, 9, 15, 16, 17, 100, 255):
-        case("dist-%d" % d, stream(block(24, lits=LETTERS, dists=bytes([d]), masks=b"\x00",
-                                         sel=[3, 3, 1], entries=[LIT8])), 24)
+        case("dist-%d" % d, stream(fblock(24, [3, 3, 1], [LIT8], lits=LETTERS, dists=bytes([d]),
+                                          masks=b"\x00")), 24 + F)
+    # A distance read and never used: a step of literals that sets distance 0.
+    case("dist-0-unused", stream(fblock(24, [3, 3, 4], [LIT8, (0xFF, 1)],
+                                        lits=LETTERS + b"QRSTUVWX", dists=b"\x00")), 24 + F)
     # Two distance bytes holding a value one byte would hold.
-    case("dist-two-bytes-small", stream(block(24, lits=LETTERS, dists=b"\x10\x00", masks=b"\x00",
-                                              sel=[3, 3, 2], entries=[LIT8])), 24)
+    case("dist-two-bytes-small", stream(fblock(24, [3, 3, 2], [LIT8], lits=LETTERS,
+                                               dists=b"\x10\x00", masks=b"\x00")), 24 + F)
     # A distance into the block before.
-    case("dist-previous-block", stream(block(16, lits=LETTERS, sel=[3, 3], entries=[LIT8]),
-                                       block(8, dists=b"\x10", masks=b"\x00", sel=[1])), 24)
-    # A distance two bytes long reaching 300 back, across two earlier blocks.
+    case("dist-previous-block", stream(fblock(16, [3, 3], [LIT8], lits=LETTERS),
+                                       fblock(8, [1], dists=bytes([200]), masks=b"\x00")),
+         24 + 2 * F)
+    # Two distance bytes reaching 300 back, past a raw block.
     case("dist-two-bytes-far", stream(raw(bytes(range(256)) + LETTERS * 3),
-                                      block(16, lits=LETTERS[:8], dists=b"\x2c\x01", masks=b"\x00",
-                                            sel=[3, 2], entries=[LIT8])), 320)
+                                      fblock(16, [3, 2], [LIT8], lits=LETTERS[:8],
+                                             dists=b"\x2c\x01", masks=b"\x00")), 320 + F)
 
     # Whether a block's distance starts at 8 or carries over from the block before: the first
-    # block ends at distance 16, and the second's only step reads no distance.
-    case("carry", stream(block(24, lits=LETTERS, dists=b"\x10", masks=b"\x00", sel=[3, 3, 1],
-                               entries=[LIT8]),
-                         block(8, sel=[3], entries=[COPY8])), 32)
+    # block ends at distance 16, and the second reads no distance.
+    case("carry", stream(fblock(24, [3, 3, 1], [LIT8], lits=LETTERS, dists=b"\x10",
+                                masks=b"\x00"),
+                         fblock(0, [])), 24 + 2 * F)
+    # The same across a raw block between the two.
+    case("carry-past-raw", stream(fblock(24, [3, 3, 1], [LIT8], lits=LETTERS, dists=b"\x10",
+                                         masks=b"\x00"),
+                                  raw(LETTERS),
+                                  fblock(0, [])), 40 + 2 * F)
 
-    # The areas. Literals and distances are used up exactly in every stream Apple's encoder
-    # wrote; whether masks and selectors must be is open.
-    case("lits-left-over", stream(block(16, lits=LETTERS + b"Q", sel=[3, 3], entries=[LIT8])), 16)
-    case("dists-left-over", stream(block(24, lits=LETTERS, dists=b"\x10\x10", masks=b"\x00",
-                                         sel=[3, 3, 1], entries=[LIT8])), 24)
-    case("masks-left-over", stream(block(24, lits=LETTERS, dists=b"\x10", masks=b"\x00\x00",
-                                         sel=[3, 3, 1], entries=[LIT8])), 24)
-    case("selectors-left-over", stream(block(16, lits=LETTERS, sel=[3, 3, 3, 3, 3, 3],
-                                             entries=[LIT8])), 16)
-    # A mask read from where the selectors begin: the mask area is empty, so selector 0 takes
-    # the selector area's first byte, 0x33, as its mask. With 16 decoded, that is 4 literals
-    # and 4 copies at distance 8.
+    # The areas. Literals and distances left over are refused (observed); masks and
+    # selectors left over are open.
+    case("lits-left-over", stream(fblock(16, [3, 3], [LIT8], lits=LETTERS + b"Q")), 16 + F)
+    case("dists-left-over", stream(fblock(24, [3, 3, 1], [LIT8], lits=LETTERS,
+                                          dists=b"\x10\x10", masks=b"\x00")), 24 + F)
+    case("masks-left-over", stream(fblock(24, [3, 3, 1], [LIT8], lits=LETTERS, dists=b"\x10",
+                                          masks=b"\x00\x00")), 24 + F)
+    case("selectors-left-over", stream(block(16 + F, lits=LETTERS,
+                                             sel=[3, 3] + FILL + [3, 3, 3, 3],
+                                             entries=entries_with_fill([LIT8]))), 16 + F)
+    # Masks read from where the selectors begin: the mask area is empty, so selector 0 takes
+    # the selector area's first byte, 0x33, as its mask: 4 literals and 4 copies.
     lits = LETTERS + b"wxyz"
     o1 = 15 + len(lits)
-    case("mask-from-selectors", stream(block(24, lits=lits, sel=[3, 3, 0, 0],
-                                             entries=[LIT8], offs=(o1, o1, o1))), 24)
-    # A mask read from the table: the mask and selector areas start together after 28
-    # literals, so the four steps of selector 0 read masks 0x33 and 0x00 from the selector
-    # bytes, 0x00 from the byte after, and then entry 0's mask, 0xFF, from the table.
-    o1 = 15 + 28
-    case("mask-from-table", stream(block(48, lits=LETTERS + b"wxyz12345678", sel=[3, 3, 0, 0, 0, 0],
-                                         entries=[LIT8], offs=(o1, o1, o1))), 48)
-    # Selectors read from the table: one selector byte gives two steps of 8 literals, and
-    # the third step's selector is the table's first byte, entry 0's mask 0x33: selector 3,
-    # whose mask takes 4 literals and copies 4 at distance 8.
-    case("selector-from-table", stream(block(24, lits=LETTERS + b"wxyz", sel=[4, 4],
-                                             entries=[(0x33, 0), LIT8])), 24)
-    # Selectors read from the literals: the selector area starts at the first literal, '3'.
-    case("selectors-in-literals", stream(block(16, lits=b"33ABCDEFGHIJKLMN", entries=[LIT8],
-                                               offs=(31, 31, 15))), 16)
+    case("mask-from-selectors", stream(fblock(24, [3, 3, 0], [LIT8], lits=lits,
+                                              offs=(o1, o1, o1))), 24 + F)
+    # Masks read on past the selectors into the table: eight steps of selector 0 after two of
+    # literals, with the mask area where the selectors begin. Their selector bytes are 0x33,
+    # then 0x00 four times, then the fill's 0xFE, 0xBF; the eighth mask is the table's first
+    # byte, entry 0's mask 0xFF. Those masks take 4 + 7 + 7 + 8 literals after the first 16.
+    sel = [3, 3] + [0] * 8
+    mask_bytes = [0x33, 0x00, 0x00, 0x00, 0x00, 0xFE, 0xBF, 0xFF]
+    lits = (LETTERS * 4)[:16 + sum(bin(m).count("1") for m in mask_bytes)]
+    o1 = 15 + len(lits)
+    case("mask-from-table", stream(fblock(80, sel, [LIT8], lits=lits, offs=(o1, o1, o1))),
+         80 + F)
+    # Selectors read from the table: a step of literals, the fill, one copy step; then the
+    # selector area has ended, and the next selector is the table's first byte, 0x33: entry
+    # 0, mask 0x33, which takes 4 literals and copies 4.
+    case("selector-from-table", stream(block(8 + F + 8 + 8, lits=LETTERS[:12],
+                                             sel=[4] + FILL + [14],
+                                             entries=[(0x33, 0), LIT8] + [(0, 0)] * 9 + [COPY8])),
+         8 + F + 16)
+    # Selectors read from the literals: the selector area starts at the first literal.
+    sel_bytes = nibbles([3] + FILL + [3])
+    lits = sel_bytes + LETTERS[:16 - len(sel_bytes)]
+    case("selectors-in-literals", stream(block(16 + F, lits=lits,
+                                               entries=entries_with_fill([LIT8]),
+                                               offs=(31, 31, 15))), 16 + F)
     # A first offset inside the header, in a block that takes no literals.
-    case("first-offset-in-header", stream(raw(LETTERS), block(8, sel=[3], entries=[COPY8],
-                                                          offs=(14, 14, 15))), 24)
+    case("first-offset-in-header", stream(raw(LETTERS), fblock(0, [], offs=(14, 14, 15))),
+         16 + F)
 
-    # Repetition counts. A step repeated past the block's end, from a selector that reads a
-    # mask and a distance byte: whether the repetitions that produce nothing read them.
-    for n in (2, 4):
-        case("rep-overshoot-%d-distances" % n, stream(block(32, lits=LETTERS, dists=b"\x10" * n,
-                                                            masks=b"\x00" * n,
-                                                            sel=[3, 3, 1, 15, 0],
-                                                            entries=[LIT8])), 32)
-    # A selector of 15 after the last step, which a count would read when 8 or fewer remain.
-    case("rep-count-in-last-step", stream(block(24, lits=LETTERS, dists=b"\x10", masks=b"\x00",
-                                                sel=[3, 3, 1, 15, 2], entries=[LIT8])), 24)
-    # A count that fills a whole 32 KiB block: 8 literals, then 4,095 steps of mask 0.
-    count = 4095 - 4
-    sel = [3, 4, 15] + [15] * (count // 15) + [count % 15]
-    case("rep-full-block", stream(block(32768, lits=LETTERS[:8], sel=sel, entries=[LIT8, COPY8])),
-         32768)
-    # A count past 65,535, more steps than a block holds.
-    count = 70000 - 4
-    sel = [3, 4, 15] + [15] * (count // 15) + [count % 15]
-    case("rep-past-16-bits", stream(block(32768, lits=LETTERS[:8], sel=sel, entries=[LIT8, COPY8])),
-         32768)
-    # A selector of 15 where a step begins: after a count ends, with 8 bytes left.
-    case("selector-15", stream(block(48, lits=LETTERS[:8], sel=[3, 4, 15, 0, 15],
-                                     entries=[LIT8, COPY8])), 48)
+    # Repetition counts. A step repeated past the block's end, whether the repetitions that
+    # produce nothing read their distance byte: 16 literals, then ten steps of mask 0 at
+    # distance 16 under a count of 13, with 10 or 13 distance bytes; from the mask area
+    # (selector 1, a mask byte each as well) and from the table (entry (0, 1)).
+    for n in (10, 13):
+        case("rep-overshoot-masks-%d-distances" % n,
+             stream(block(96, lits=LETTERS, dists=b"\x10" * n, masks=b"\x00" * n,
+                          sel=[3, 3, 1] + count_nibbles(13), entries=[LIT8])), 96)
+        case("rep-overshoot-table-%d-distances" % n,
+             stream(block(96, lits=LETTERS, dists=b"\x10" * n,
+                          sel=[3, 3, 4] + count_nibbles(13), entries=[LIT8, (0x00, 1)])), 96)
+    # A selector of 15 after the last step, which a count would read when 8 or fewer bytes
+    # remain: with 1 distance byte if it is not read, 6 if it is and each repetition reads one.
+    for n in (1, 6):
+        case("rep-count-in-last-step-%d-distances" % n,
+             stream(block(16 + F + 8, lits=LETTERS, dists=b"\x10" * n,
+                          sel=[3, 3] + FILL + [4, 15, 2],
+                          entries=[LIT8, (0x00, 1)] + [(0, 0)] * 9 + [COPY8])), 16 + F + 8)
+    # How far a count may run past its block's end: 8 literals, then 100 steps of copies
+    # needed and 100 + k counted.
+    for k in (0, 1, 7, 8, 9, 16, 100, 1000):
+        case("rep-past-end-by-%d" % k, stream(block(808, lits=LETTERS[:8],
+                                                    sel=[3, 4] + count_nibbles(100 + k),
+                                                    entries=[LIT8, COPY8])), 808)
+    # Counts either side of 65,535 in a full block, which needs 4,095.
+    for total in (65535, 65536, 65539):
+        case("rep-count-%d" % total, stream(block(32768, lits=LETTERS[:8],
+                                                  sel=[3, 4] + count_nibbles(total),
+                                                  entries=[LIT8, COPY8])), 32768)
 
     # The table.
-    case("table-count-3-unused", stream(block(16, lits=LETTERS, sel=[3, 3],
-                                              entries=[LIT8] + [(0, 0)] * 10 + [(0, 3)])), 16)
-    case("table-count-3-used", stream(block(24, lits=LETTERS, dists=b"\x10", sel=[3, 3, 4],
-                                            entries=[LIT8, (0, 3)])), 24)
-    case("table-tail-set", stream(block(16, lits=LETTERS, sel=[3, 3], entries=[LIT8],
-                                        tail=b"\xff\xff")), 16)
+    case("table-count-3-unused", stream(block(16 + F, lits=LETTERS, sel=[3, 3] + FILL,
+                                              entries=[LIT8] + [(0, 0)] * 9 + [(0, 3), COPY8])),
+         16 + F)
+    case("table-count-3-used", stream(fblock(24, [3, 3, 4], [LIT8, (0, 3)], lits=LETTERS,
+                                             dists=b"\x10")), 24 + F)
+    case("table-tail-set", stream(fblock(16, [3, 3], [LIT8], lits=LETTERS, tail=b"\xff\xff")),
+         16 + F)
 
-    # Block framing.
-    case("raw-32768", stream(raw(bytes(32768))), 32768)
-    case("raw-32769", stream(raw(bytes(32769))), 32769)
-    sel = [3, 4, 15] + [15] * ((4096 - 4) // 15) + [(4096 - 4) % 15]
-    case("compressed-32769", stream(block(32769, lits=LETTERS[:8], sel=sel,
-                                          entries=[LIT8, COPY8])), 32769)
-    case("end-compressed-form", stream(raw(LETTERS), end=block(0)), 16)
-    case("end-then-bytes", stream(raw(LETTERS), end=END + b"\x00\x00\x00\x00"), 16)
-    case("end-then-block", stream(raw(LETTERS), end=END + raw(LETTERS) + END), 32)
-    case("no-end", stream(raw(LETTERS), end=b""), 16)
-    case("block-length-0", stream(u24(0) + u24(16) + LETTERS), 16)
-    case("block-shorter-than-table", stream(u24(20) + u24(16) + u24(15) + u24(15) + u24(15)
-                                            + b"\x33\x33\x00\x00\x00"), 16)
-    case("magic-08", b"ZBM\x08" + raw(LETTERS) + END, 16)
+    # The signature's fourth byte, and its first three.
+    for b in (0x00, 0x01, 0x08, 0x0A, 0x10, 0xFF):
+        case("magic-%02x" % b, b"ZBM" + bytes([b]) + raw(LETTERS) + END, 16)
+    case("magic-zbn", b"ZBN\x09" + raw(LETTERS) + END, 16)
+    case("magic-lower", b"zbm\x09" + raw(LETTERS) + END, 16)
+
+    # An end block whose length is not six: shorter, and longer with bytes after its header.
+    case("end-length-5", stream(raw(LETTERS), end=u24(5) + u24(0) + b"\x00" * 10), 16)
+    case("end-length-7", stream(raw(LETTERS), end=u24(7) + u24(0) + b"\x00" * 10), 16)
     return out
 
 

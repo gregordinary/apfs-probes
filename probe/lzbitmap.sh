@@ -5,17 +5,19 @@
 # with each bit after the first block header changed in turn (compressutil.py
 # oracle); what it makes of streams built by hand, each asking it one question
 # about the format (compressutil.py rules, the streams in zbmcases.py); and
-# how it encodes inputs of many blocks (compressutil.py corpus).
+# how it encodes inputs of many blocks (compressutil.py corpus); and what it
+# makes of every one-bit change and every prefix of more streams (compressutil.py
+# flips).
 #
-# Usage: lzbitmap.sh OUTDIR [study] [oracle] [rules] [corpus]
+# Usage: lzbitmap.sh OUTDIR [study] [oracle] [rules] [corpus] [flips]
 #        With no part named, every part runs.
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift
 
-parts=${*:-study oracle rules corpus}
+parts=${*:-study oracle rules corpus flips}
 for p in $parts; do
-    case $p in study|oracle|rules|corpus) ;; *) echo "lzbitmap.sh: no part named $p" >&2; exit 1 ;; esac
+    case $p in study|oracle|rules|corpus|flips) ;; *) echo "lzbitmap.sh: no part named $p" >&2; exit 1 ;; esac
 done
 wants() { case " $parts " in *" $1 "*) return 0 ;; esac; return 1; }
 
@@ -44,6 +46,11 @@ fi
 if wants corpus; then
     section corpus
     step corpus 600 "$PY" "$HERE/compressutil.py" corpus "$OUT/algorithms.json" "$OUT/corpus" "$OUT/corpus.json"
+fi
+
+if wants flips; then
+    section flips
+    step flips 1500 "$PY" "$HERE/compressutil.py" flips "$OUT/algorithms.json" "$OUT/flips.jsonl"
 fi
 
 section done

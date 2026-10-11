@@ -11,6 +11,8 @@
     compressutil.py rules ALGORITHMS.json OUT.jsonl
     compressutil.py corpus ALGORITHMS.json DIR OUT.json
     compressutil.py flips ALGORITHMS.json OUT.jsonl
+    compressutil.py types ALGORITHMS.json DIR OUT.json
+    compressutil.py typeread MNT OUT.jsonl
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -39,6 +41,12 @@ inputs than `study`'s, of many blocks and of every kind of step. `flips` does
 what `oracle` does for more streams, among them streams of two blocks and
 streams whose steps read masks and two-byte distances, and also decodes every
 prefix of each; it keeps a digest of each output rather than the output.
+`types` stores, under every compression type number from 0 to 63, inline and
+in the resource fork, LZRAVEN's and LZMESH's encoding of known content in the
+layout type 8 has, and a payload no algorithm wrote; beside them, LZFSE and
+LZBITMAP at the type numbers the kernel reads them under. `typeread` reads
+each of those files back through the kernel, each read in a process of its own
+under a time limit, so that a read that never returns costs one file.
 """
 
 import ctypes
@@ -555,11 +563,172 @@ def streams(algos_json, directory, out):
     write_json(out, record)
 
 
+# The compression type numbers `types` records, every one in both places.
+TYPE_NUMBERS = range(64)
+# The algorithms `types` stores under every type number, and the content each
+# place holds: one chunk inline, several chunks in the resource fork.
+TYPE_ALGORITHMS = ["COMPRESSION_LZRAVEN", "COMPRESSION_LZMESH"]
+TYPE_CONTENTS = {"inline": "text-1000", "fork": "text-204800"}
+# A payload no algorithm wrote, so that a type the kernel does not know and a
+# type it knows but cannot decode this payload with can answer differently.
+GARBAGE = bytes([0xA5]) * 64
+GARBAGE_SIZE = 4096
+# Layouts the earlier probes found the kernel reads, written again beside the
+# sweep as controls on the harness.
+TYPE_CONTROLS = [
+    ("control-lzfse", "COMPRESSION_LZFSE", "inline", 11),
+    ("control-lzfse", "COMPRESSION_LZFSE", "fork", 12),
+    ("control-lzbitmap", "COMPRESSION_LZBITMAP", "inline", 13),
+    ("control-lzbitmap", "COMPRESSION_LZBITMAP", "fork", 14),
+]
+
+
+def store(lib, path, place, kind, size, chunks):
+    """Create PATH holding CHUNKS as compression type KIND: the one chunk in
+    the decmpfs attribute when PLACE is inline, the type 8 table and chunks in
+    the resource fork otherwise. Returns what each call did."""
+    if place == "inline":
+        attrs = [(DECMPFS, header(kind, size) + chunks[0])]
+    else:
+        attrs = [(FORK, fork(chunks)), (DECMPFS, header(kind, size))]
+    done = {}
+    try:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644))
+        for attr, value in attrs:
+            done[attr.decode()] = {"len": len(value), "how": set_xattr(lib, path, attr, value)}
+    except OSError as e:
+        done["error"] = errno.errorcode.get(e.errno, str(e.errno))
+        return done
+    try:
+        os.chflags(path, stat.UF_COMPRESSED)
+        done["chflags"] = "ok"
+    except OSError as e:
+        done["chflags"] = errno.errorcode.get(e.errno, str(e.errno))
+    return done
+
+
+def types(algos_json, directory, out):
+    """Every type number in both places, holding each algorithm's encoding of
+    known content and holding the garbage payload, beside the controls."""
+    with open(algos_json) as f:
+        algos = json.load(f)
+    codec = Codec()
+    lib = libc()
+    data = contents()
+    plan = []
+    for kind in TYPE_NUMBERS:
+        for place in ("inline", "fork"):
+            plan.append(("garbage", None, place, kind))
+            for algo_name in TYPE_ALGORITHMS:
+                plan.append((algo_name[len("COMPRESSION_"):].lower(), algo_name, place, kind))
+    plan += TYPE_CONTROLS
+    record = []
+    for label, algo_name, place, kind in plan:
+        content = TYPE_CONTENTS[place] if algo_name else None
+        name = "t%02d-%s-%s" % (kind, place, content or "garbage")
+        sub = os.path.join(directory, label)
+        os.makedirs(sub, exist_ok=True)
+        entry = {"label": label, "place": place, "type": kind, "file": os.path.join(label, name)}
+        record.append(entry)
+        if algo_name is None:
+            size, chunks = GARBAGE_SIZE, [GARBAGE]
+        else:
+            entry["algorithm"] = algos.get(algo_name)
+            if entry["algorithm"] is None:
+                entry["skipped"] = "the header declares no " + algo_name
+                continue
+            raw = data[content]
+            size = len(raw)
+            chunks = [codec.encode(raw[i:i + CHUNK], entry["algorithm"])
+                      for i in range(0, len(raw), CHUNK)]
+            if any(c is None for c in chunks):
+                entry["skipped"] = "the encoder wrote nothing for a chunk"
+                continue
+            entry["chunk_lengths"] = [len(c) for c in chunks]
+        entry["stored"] = store(lib, os.path.join(sub, name).encode(), place, kind, size, chunks)
+    write_json(out, record)
+
+
+READ_CHILD = r"""
+import hashlib, json, os, sys
+try:
+    with open(sys.argv[1], "rb") as f:
+        got = f.read(4 * 1024 * 1024)
+    print(json.dumps({"len": len(got), "sha256": hashlib.sha256(got).hexdigest(),
+                      "head": got[:32].hex()}))
+except OSError as e:
+    print(json.dumps({"errno": e.errno}))
+"""
+
+
+def typeread(mnt, out):
+    """Every file `types` wrote, read through the kernel by a process of its
+    own under a time limit, against the content its name names."""
+    want = {name: sha(data) for name, data in contents().items()}
+    paths = []
+    for top, dirs, files in os.walk(mnt):
+        dirs.sort()
+        paths += [os.path.join(top, name) for name in sorted(files)]
+    # Controls first, then by type number, so the files most likely to answer
+    # are read before any that might not; one line per file, written as it is
+    # read, so a run cut short keeps what it read.
+    paths.sort(key=lambda p: ("control" not in p, os.path.basename(p)))
+    log = open(out, "w")
+    for path in paths:
+        name = os.path.basename(path)
+        m = re.match(r"t(\d\d)-(inline|fork)-(.+)$", name)
+        if not m:
+            continue
+        entry = {"file": os.path.relpath(path, mnt), "type": int(m.group(1)),
+                 "place": m.group(2), "content": m.group(3)}
+        try:
+            entry.update(read_one(path, want))
+        finally:
+            log.write(json.dumps(entry, ensure_ascii=True) + "\n")
+            log.flush()
+    log.close()
+
+
+def read_one(path, want):
+    """What the kernel gives for one file of `types`."""
+    import subprocess
+    entry = {}
+    content = re.match(r"t\d\d-(?:inline|fork)-(.+)$", os.path.basename(path)).group(1)
+    try:
+        st = os.lstat(path)
+        entry["flags"] = "0x%x" % getattr(st, "st_flags", 0)
+        entry["size"] = st.st_size
+    except OSError as e:
+        entry["stat"] = errno.errorcode.get(e.errno, str(e.errno))
+    try:
+        child = subprocess.run([sys.executable, "-c", READ_CHILD, path],
+                               capture_output=True, text=True, timeout=10)
+        got = json.loads(child.stdout or "{}")
+    except subprocess.TimeoutExpired:
+        entry["read"] = "timeout"
+        return entry
+    except ValueError:
+        entry["read"] = "no answer"
+        return entry
+    if "errno" in got:
+        entry["read"] = "error"
+        entry["error"] = errno.errorcode.get(got["errno"], str(got["errno"]))
+    elif "len" not in got:
+        entry["read"] = "no answer"
+    elif content in want:
+        entry["read"] = "match" if got["sha256"] == want[content] else "mismatch"
+    else:
+        entry["read"] = "read"
+    if entry["read"] in ("mismatch", "read"):
+        entry.update(read_len=got["len"], read_sha256=got["sha256"], head=got["head"])
+    return entry
+
+
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
                 "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
                 "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3),
-                "flips": (flips, 2)}
+                "flips": (flips, 2), "types": (types, 3), "typeread": (typeread, 2)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

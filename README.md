@@ -71,6 +71,14 @@ A probe that takes arguments gets them from the `args` input:
   distance or length, or the literals between two copies of the same bytes,
   each decoded back and kept beside its input.
 
+- `decmpfs`: which compression type numbers the kernel reads a file under.
+  Under every number from 0 to 63, in the `com.apple.decmpfs` attribute and in
+  the resource fork, an attached image holds LZRAVEN's and LZMESH's encoding
+  of known content, where libcompression declares them, and a payload no
+  algorithm wrote; LZFSE and LZBITMAP at the numbers the kernel reads them
+  under are the controls. Each file is read back after a remount, in a
+  process of its own under a time limit.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

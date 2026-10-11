@@ -8,6 +8,8 @@
     compressutil.py streams ALGORITHMS.json DIR OUT.json
     compressutil.py study ALGORITHMS.json DIR OUT.json
     compressutil.py oracle ALGORITHMS.json OUT.jsonl
+    compressutil.py rules ALGORITHMS.json OUT.jsonl
+    compressutil.py corpus ALGORITHMS.json DIR OUT.json
 
 `algorithms` reads the algorithm names and numbers libcompression's public
 header declares, so nothing here spells one from memory. `stage` writes the
@@ -28,6 +30,11 @@ one byte, the distance of one match, the length of one match at a fixed
 distance, and the literals between two copies of a run. `oracle` encodes a
 few of those inputs, changes every bit of each stream after its first block
 header in turn, and keeps what libcompression decodes each changed stream to.
+`rules` hands the decoder the streams zbmcases.py builds by hand, each into
+three buffers: zeroed, filled with 0xA5, and filled with 0xC3 behind 64 bytes
+of 0x5A that are not part of it, so that an output taken from the buffer
+rather than the stream shows. `corpus` keeps LZBITMAP's encoding of larger
+inputs than `study`'s, of many blocks and of every kind of step.
 """
 
 import ctypes
@@ -368,6 +375,97 @@ def oracle(algos_json, out):
                                         "output": dst.raw[:n].hex()}) + "\n")
 
 
+# The buffers `rules` decodes into: a name, the byte the buffer is filled with, and how
+# many bytes of 0x5A sit before the part the decoder is given.
+FILLS = [("zero", 0x00, 0), ("a5", 0xA5, 0), ("c3-after-5a", 0xC3, 64)]
+
+
+def rules(algos_json, out):
+    import zbmcases
+    with open(algos_json) as f:
+        algo = json.load(f)["COMPRESSION_LZBITMAP"]
+    codec = Codec()
+    with open(out, "w", buffering=1) as f:
+        for name, stream, size in zbmcases.cases():
+            room = 2 * size + 64
+            results = []
+            for fill, byte, before in FILLS:
+                whole = ctypes.create_string_buffer(bytes([0x5A]) * before + bytes([byte]) * room,
+                                                    before + room)
+                dst = ctypes.addressof(whole) + before
+                src = ctypes.create_string_buffer(stream, len(stream))
+                n = codec.lib.compression_decode_buffer(dst, room, src, len(stream), None, algo)
+                raw = whole.raw
+                results.append({"fill": fill, "produced": n,
+                                "output": raw[before:before + n].hex(),
+                                "before_intact": raw[:before] == bytes([0x5A]) * before,
+                                "after_intact": raw[before + n:before + room]
+                                == bytes([byte]) * (room - n)})
+            f.write(json.dumps({"case": name, "size": size, "stream": stream.hex(),
+                                "results": results}) + "\n")
+
+
+def corpus_inputs():
+    """Inputs of many blocks, each kind of data asking the encoder for other steps."""
+    inputs = {}
+    for n, seed in ((1000, 1), (8191, 2), (32767, 3), (32768, 4), (32769, 5), (65535, 6),
+                    (65536, 7), (100000, 8), (262144, 9)):
+        inputs["text-%d" % n] = text(n, 500 + seed)
+    # Records whose fields change at different rates, for masks of every shape.
+    rec = bytearray()
+    for i in range(6000):
+        rec += struct.pack("<IIHH8s", i, i * 7919 % 65536, i % 13, 0xBEEF, b"name%04d" % (i % 1000))
+    inputs["records-120000"] = bytes(rec)
+    # One 8-byte pattern with a byte changed every 37 bytes.
+    sparse = bytearray(b"pattern!" * 8192)
+    for i in range(0, len(sparse), 37):
+        sparse[i] ^= 0x55
+    inputs["sparse-65536"] = bytes(sparse)
+    # Runs long enough for counts of many nibbles, in more than one block.
+    inputs["zeros-131072"] = bytes(131072)
+    inputs["zeros-random-zeros"] = bytes(40000) + pattern(20000, 501) + bytes(40000)
+    # Repeats at one distance per input: across a block, past what one byte holds, and past
+    # what two bytes hold.
+    a = pattern(40000, 502)
+    inputs["repeat-40000"] = a + a
+    b = pattern(70000, 503)
+    inputs["repeat-70000"] = b + b
+    inputs["cycle-255"] = bytes(range(255)) * 400
+    inputs["cycle-256"] = bytes(range(256)) * 400
+    inputs["cycle-257"] = (bytes(range(256)) + b"\x00") * 400
+    # Text and random bytes in pieces of every length, for literals and distances of both
+    # widths side by side.
+    mixed = bytearray()
+    for i in range(1, 400):
+        mixed += text(i % 300 + 1, 600 + i % 7) if i % 2 else pattern(i % 200 + 1, 700 + i)
+    inputs["mixed"] = bytes(mixed)
+    inputs["random-100000"] = pattern(100000, 504)
+    return inputs
+
+
+def corpus(algos_json, directory, out):
+    with open(algos_json) as f:
+        algo = json.load(f)["COMPRESSION_LZBITMAP"]
+    codec = Codec()
+    for sub in ("in", "lzbitmap"):
+        os.makedirs(os.path.join(directory, sub), exist_ok=True)
+    record = {}
+    for name, data in corpus_inputs().items():
+        with open(os.path.join(directory, "in", name), "wb") as f:
+            f.write(data)
+        entry = {"input_len": len(data), "sha256": sha(data)}
+        record[name] = entry
+        encoded = codec.encode(data, algo)
+        if encoded is None:
+            entry["encoded"] = None
+            continue
+        with open(os.path.join(directory, "lzbitmap", name), "wb") as f:
+            f.write(encoded)
+        entry["encoded_len"] = len(encoded)
+        entry["round_trip"] = codec.decode(encoded, len(data), algo) == data
+    write_json(out, record)
+
+
 def streams(algos_json, directory, out):
     with open(algos_json) as f:
         algos = json.load(f)
@@ -402,7 +500,7 @@ def streams(algos_json, directory, out):
 def main(argv):
     commands = {"algorithms": (algorithms, 2), "stage": (stage, 2), "own": (own, 3),
                 "verify": (verify, 2), "streams": (streams, 3), "study": (study, 3),
-                "oracle": (oracle, 2)}
+                "oracle": (oracle, 2), "rules": (rules, 2), "corpus": (corpus, 3)}
     if len(argv) < 2 or argv[1] not in commands or len(argv) != commands[argv[1]][1] + 2:
         raise SystemExit(__doc__)
     commands[argv[1]][0](*argv[2:])

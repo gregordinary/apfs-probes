@@ -277,6 +277,48 @@ def cases():
     # count at 4 steps of entry 1's copies.
     case("selectors-start-in-table", stream(raw(LETTERS), block(32, entries=[(0xF4, 0), COPY8])),
          48)
+    # Whether the signature's fourth byte changes how compressed blocks decode: streams of
+    # every kind of step, two of them libcompression's own, under each value either version
+    # reads.
+    encoded = {
+        # libcompression's encoding of 145 bytes of `a`, and of 145 bytes of `text(145, 100)`.
+        "run": bytes.fromhex("5a424d092b0000910000170000170000170000616161616161616134ff0400fc030000"
+                             "000000000000000000000000060000000000"),
+        "text": bytes.fromhex("5a424d096700009100004b00004f00004f00006c696e6520303030303030206f662073"
+                              "656420313a74686520717569636b62726f776e2066786a756d70736f7665726c617a79"
+                              "20646f670a6c696e310d1e1f45776a4b5897f30a00ac038f3fffec059867fb01000000"
+                              "0000060000000000"),
+    }
+    built = {name: s for name, s, _ in out}
+    for base in ("ctl-two-blocks", "dist-two-bytes-far", "mask-from-selectors",
+                 "selector-from-table", "carry"):
+        encoded[base] = built[base]
+    sizes = {name: size for name, _, size in out}
+    for base, s in sorted(encoded.items()):
+        size = sizes.get(base, 145)
+        for b in (0x00, 0x01, 0x04, 0x05, 0x08, 0x0C, 0x0D):
+            case("flags-%02x-%s" % (b, base), s[:3] + bytes([b]) + s[4:], size)
+
+    # Where the limit on a count lies between 32,769 and 65,534, or whether it is a limit on
+    # the selector area: counts between the two, and a count of 4,095 whose selector area is
+    # padded, after its last selector, to a given number of bytes.
+    for total in (40000, 49151, 49152, 57343, 57344, 61439, 61440, 65519, 65520, 65533):
+        case("count-full-%d" % total, stream(block(32768, lits=LETTERS[:8],
+                                                   sel=[3, 4] + count_nibbles(total),
+                                                   entries=[LIT8, COPY8])), 32768)
+    sel = [3, 4] + count_nibbles(4095)
+    for area in (2047, 2048, 2049, 4096, 4097, 8192):
+        pad = bytes(area - len(nibbles(sel)))
+        case("selector-area-%d" % area, stream(block(32768, lits=LETTERS[:8], sel=sel, pad=pad,
+                                                     entries=[LIT8, COPY8])), 32768)
+
+    # Selectors that start at the table after a mask area of one unread byte, after a raw
+    # block: the table's first byte, 0xF4, is selector 4 and a count marker; its second, 0,
+    # ends the count at 4 steps of entry 1, mask 0x04, a literal and 7 copies each.
+    case("selectors-start-at-table-after-masks",
+         stream(raw(LETTERS), block(32, lits=b"wxyz", masks=b"\x00",
+                                    entries=[(0xF4, 0), (0x04, 0)])), 48)
+
     # An end block whose length is not six: shorter, and longer with bytes after its header.
     case("end-length-5", stream(raw(LETTERS), end=u24(5) + u24(0) + b"\x00" * 10), 16)
     case("end-length-7", stream(raw(LETTERS), end=u24(7) + u24(0) + b"\x00" * 10), 16)

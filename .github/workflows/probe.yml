@@ -1,4 +1,5 @@
 name: probe
+run-name: ${{ inputs.probe }} ${{ inputs.args }}
 
 on:
   workflow_dispatch:
@@ -11,6 +12,10 @@ on:
         description: JSON list of runner labels
         required: true
         default: '["macos-15", "macos-26", "xcode-27"]'
+      args:
+        description: Arguments for the probe after its output directory
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -34,10 +39,12 @@ jobs:
         timeout-minutes: 35
         env:
           PROBE: ${{ inputs.probe }}
+          ARGS: ${{ inputs.args }}
           RUNNER_LABEL: ${{ matrix.runner }}
         run: |
           [[ $PROBE =~ ^[a-z0-9-]+$ && -f probe/$PROBE.sh ]] || { echo "no probe named $PROBE"; exit 1; }
-          bash "probe/$PROBE.sh" out
+          [[ $ARGS =~ ^[a-z0-9/\ -]*$ ]] || { echo "arguments may hold only a-z, 0-9, /, - and spaces"; exit 1; }
+          bash "probe/$PROBE.sh" out $ARGS
 
       - name: Keep the results
         if: always()

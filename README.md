@@ -11,6 +11,10 @@ each runner it is given:
 
     gh workflow run probe.yml -f probe=discover -f runners='["macos-15","macos-26"]'
 
+A probe that takes arguments gets them from the `args` input:
+
+    gh workflow run probe.yml -f probe=mutate -f args='loaded 1/2' -f runners='["macos-15"]'
+
 ## The probes
 
 - `discover`: versions of macOS, the APFS driver and the tools; a container
@@ -42,6 +46,12 @@ each runner it is given:
   single operations; and thirty snapshots in one mount, each right after a
   write, each mounted read-only and listed, with one deleted from the
   middle.
+- `mutate`: every byte of a fresh container's nonzero blocks, and of the
+  object blocks of a container holding a small tree, changed one at a time,
+  with what `fsck_apfs -n -W` says about each change. `mutate.py` tells an
+  object by its checksum alone, a rule its header states with its sources,
+  so the bytes are chosen by position rather than by meaning. The arguments
+  `fresh` or `loaded`, and a shard `K/N`, share a sweep out between runs.
 
 ## What a run keeps
 

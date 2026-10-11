@@ -59,6 +59,13 @@ A probe that takes arguments gets them from the `args` input:
   node, and gives each byte of a key or value its place in a record, so the
   same byte of every record of a kind is read together.
 
+- `compress`: files of known content stored compressed on an attached
+  image, by `afsctool` (installed from Homebrew) with each compressor it
+  offers, and by `probe/compressutil.py` through libcompression with LZVN,
+  LZFSE and LZBITMAP; each file read back by the kernel after the volume is
+  mounted again; and libcompression's encoding of small known inputs by every
+  algorithm its public header declares.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:
@@ -110,14 +117,16 @@ files comes from two sources:
   `steps.tsv` and the JSON records. To the extent possible under law, this
   repository's authors have waived all copyright and related or neighboring
   rights to this content under CC0-1.0 (`LICENSE-CC0`).
-- **Content from macOS:** everything else. This includes the container and
-  volume superblocks, object maps, B-trees, checkpoints, space-manager
-  records and snapshot records; the files and extended attributes macOS adds
-  on its own when it mounts a volume or backs up to one, such as the
-  `.Spotlight-V100` and `.fseventsd` folders and Time Machine's attributes;
-  and the text macOS tools print, such as `diskutil`, `fsck_apfs` and
-  `apfs_checkseal` listings, kept exactly as printed. This content is not
-  the work of this repository's authors, and none of the repository's
+- **Content from macOS and other tools:** everything else. This includes
+  the container and volume superblocks, object maps, B-trees, checkpoints,
+  space-manager records and snapshot records; the files and extended
+  attributes macOS adds on its own when it mounts a volume or backs up to
+  one, such as the `.Spotlight-V100` and `.fseventsd` folders and Time
+  Machine's attributes; the compressed forms libcompression and `afsctool`,
+  a third-party tool installed from Homebrew, make of this repository's
+  content; and the text macOS tools print, such as `diskutil`, `fsck_apfs`
+  and `apfs_checkseal` listings, kept exactly as printed. This content is
+  not the work of this repository's authors, and none of the repository's
   licenses applies to it.
 
 The release files are published as test data, so that anyone building an

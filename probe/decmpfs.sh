@@ -7,10 +7,10 @@
 #            header declares, compression_tool's usage, and the kernel's
 #            sysctl names that mention compression
 #   types    on an attached image, under every type number from 0 to 63, in
-#            the decmpfs attribute and in the resource fork: LZRAVEN's and
-#            LZMESH's encoding of known content in the layout type 8 has, and
-#            a payload no algorithm wrote; LZFSE and LZBITMAP at the type
-#            numbers the kernel reads them under, as controls
+#            the decmpfs attribute and in the resource fork: LZRAVEN's,
+#            LZMESH's and LZ4's encoding of known content in the layout type 8
+#            has, and a payload no algorithm wrote; LZFSE and LZBITMAP at the
+#            type numbers the kernel reads them under, as controls
 #   verify   the volume unmounted and mounted again, every file read back by
 #            the kernel in a process of its own under a time limit, the tree's
 #            manifest, and what the system log says about compressed files

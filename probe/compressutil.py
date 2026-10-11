@@ -42,7 +42,7 @@ what `oracle` does for more streams, among them streams of two blocks and
 streams whose steps read masks and two-byte distances, and also decodes every
 prefix of each; it keeps a digest of each output rather than the output.
 `types` stores, under every compression type number from 0 to 63, inline and
-in the resource fork, LZRAVEN's and LZMESH's encoding of known content in the
+in the resource fork, LZRAVEN's, LZMESH's and LZ4's encoding of known content in the
 layout type 8 has, and a payload no algorithm wrote; beside them, LZFSE and
 LZBITMAP at the type numbers the kernel reads them under. `typeread` reads
 each of those files back through the kernel, each read in a process of its own
@@ -567,7 +567,7 @@ def streams(algos_json, directory, out):
 TYPE_NUMBERS = range(64)
 # The algorithms `types` stores under every type number, and the content each
 # place holds: one chunk inline, several chunks in the resource fork.
-TYPE_ALGORITHMS = ["COMPRESSION_LZRAVEN", "COMPRESSION_LZMESH"]
+TYPE_ALGORITHMS = ["COMPRESSION_LZRAVEN", "COMPRESSION_LZMESH", "COMPRESSION_LZ4"]
 TYPE_CONTENTS = {"inline": "text-1000", "fork": "text-204800"}
 # A payload no algorithm wrote, so that a type the kernel does not know and a
 # type it knows but cannot decode this payload with can answer differently.

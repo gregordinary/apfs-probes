@@ -122,6 +122,17 @@ A probe that takes arguments gets them from the `args` input:
   so each manifest describes exactly the image beside it. `corpus.json`
   names each image, its volumes and their snapshots, and the manifest each
   is held to.
+- `clonerefs`: what macOS records about the blocks clones share as the files
+  sharing them change. Eight scenes, each in a fresh container of 4 KiB
+  blocks unless another size is asked for: a written clone whose source is
+  then removed; one whose source is overwritten and then emptied; a source
+  written while its clone is not, then the clone written; a clone
+  made after a Time Machine snapshot of the blocks the snapshot holds; a
+  clone of a clone; two clones of one file; snapshots deleted while clones
+  use their blocks; and a clone of a file kept in its resource fork. After
+  each stage the image is checked with `fsck_apfs -n` and `-n -W` and
+  dumped, and every file is read back against the content the scene's
+  operations give it.
 
 ## What a run keeps
 

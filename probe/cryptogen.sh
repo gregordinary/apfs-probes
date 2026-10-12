@@ -87,7 +87,8 @@ convert() {
 # finish NAME IMAGE : record the open volume, close it, check the container
 # while it is attached, detach it, and dump the image. fsck_apfs reads an
 # encrypted volume's keybag through the disk, so a check of the file alone
-# fails for want of it; the check that counts is of the container's own disk,
+# fails for want of it, and checks no container holding a locked volume; the
+# check that counts is of the container's own disk with its volume unlocked,
 # and the physical store under it and diskutil's verification are kept beside
 # it.
 finish() {
@@ -105,6 +106,11 @@ finish() {
         DEV=$(attach_raw "$p-check" "$img") && list_named "$p-check" "$DEV" || DEV=""
     fi
     if [ -n "$DEV" ]; then
+        # Neither fsck_apfs nor diskutil checks a container while a volume in it is
+        # encrypted and locked, so an encrypted one is unlocked, not mounted, first;
+        # for a volume that is not encrypted this step fails and changes nothing.
+        [ -n "$VDEV" ] &&
+            sstep "$p-check-unlock" 120 diskutil apfs unlockVolume "$VDEV" -passphrase "$PASS" -nomount
         sstep "$p-fsck" 600 fsck_apfs -n "/dev/r$CONT"
         sstep "$p-fsck-warnings" 600 fsck_apfs -n -W "/dev/r$CONT"
         sstep "$p-fsck-store" 600 fsck_apfs -n "/dev/r${DEV#/dev/}"

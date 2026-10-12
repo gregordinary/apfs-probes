@@ -107,6 +107,29 @@ first_volume() {
     "$PY" "$HERE/disks.py" volumes "$OUT/log/$1.out" "$2" | head -1 | cut -f1
 }
 
+# list_named NAME DEV : save the APFS listing as log/NAME-list.out, and list
+# again, a second apart and up to ten times, until the container on the
+# attached disk DEV is listed with a name for every volume: macOS can list a
+# volume just added before it reports the volume's name. Sets LIST to the last
+# listing's name and CONT to the container, or to nothing if none is listed,
+# and fails then.
+list_named() {
+    local i
+    LIST="$1-list"
+    apfs_list "$LIST"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        CONT=$("$PY" "$HERE/disks.py" container-of "$OUT/log/$LIST.out" "$2" 2>/dev/null) || CONT=""
+        if [ -n "$CONT" ] && "$PY" "$HERE/disks.py" named "$OUT/log/$LIST.out" "$CONT" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+        LIST="$1-list-again$i"
+        apfs_list "$LIST"
+    done
+    CONT=$("$PY" "$HERE/disks.py" container-of "$OUT/log/$LIST.out" "$2" 2>/dev/null) || CONT=""
+    [ -n "$CONT" ]
+}
+
 # mount_vol NAME VDEV MNT : mount VDEV at MNT out of the Finder's view, falling
 # back to a plain mount where the option is refused.
 mount_vol() {

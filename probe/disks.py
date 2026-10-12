@@ -9,6 +9,10 @@
         the device of the volume called NAME in CONTAINER
     disks.py volumes APFS-LIST.plist CONTAINER
         every volume of CONTAINER, one "device<TAB>name" line each
+    disks.py named APFS-LIST.plist CONTAINER
+        exit 0 if every volume of CONTAINER is listed with a name, 1 if not
+    disks.py store APFS-LIST.plist CONTAINER
+        CONTAINER's physical store, the disk or slice that holds it
     disks.py key PLIST KEY
         the top-level value KEY, as `diskutil info -plist` prints MountPoint
     disks.py snapshots SNAPSHOTS.plist
@@ -75,6 +79,22 @@ def main(argv):
             if c.get("ContainerReference") == bare(argv[3]):
                 for v in c.get("Volumes", []):
                     print("%s\t%s" % (v.get("DeviceIdentifier"), v.get("Name")))
+    elif len(argv) == 4 and argv[1] == "named":
+        for c in containers(load(argv[2])):
+            if c.get("ContainerReference") == bare(argv[3]):
+                if all(v.get("Name") for v in c.get("Volumes", [])):
+                    return
+                raise SystemExit(1)
+        raise SystemExit("no container %s" % argv[3])
+    elif len(argv) == 4 and argv[1] == "store":
+        for c in containers(load(argv[2])):
+            if c.get("ContainerReference") == bare(argv[3]):
+                stores = [s.get("DeviceIdentifier") for s in c.get("PhysicalStores", [])]
+                store = c.get("DesignatedPhysicalStore") or (stores[0] if stores else None)
+                if store:
+                    print(store)
+                    return
+        raise SystemExit("no physical store for %s" % argv[3])
     elif len(argv) == 4 and argv[1] == "key":
         value = load(argv[2]).get(argv[3])
         if value is None:

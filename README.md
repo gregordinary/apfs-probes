@@ -133,6 +133,19 @@ A probe that takes arguments gets them from the `args` input:
   each stage the image is checked with `fsck_apfs -n` and `-n -W` and
   dumped, and every file is read back against the content the scene's
   operations give it.
+- `reformat`: whether a container made where another container was keeps
+  the older one's checkpoints, and which of the two macOS and `fsck_apfs`
+  then read. Two 2 GiB containers with two volumes each, one on a whole disk
+  and one in a GUID partition map, are mounted, written and unmounted until
+  `fsck_apfs` checks a transaction of at least 40. A copy of each is then
+  made into a new container in each way Apple's tools offer: `newfs_apfs` on
+  the image file, on the attached disk and on the partition; `diskutil
+  eraseVolume`, `eraseDisk` and `partitionDisk`; and `diskutil apfs
+  deleteContainer` followed by `createContainer` and `addVolume`. Each new
+  image is dumped as it was made, checked with `fsck_apfs -n` and `-n -W`,
+  attached and listed, every volume macOS lists is mounted and its root
+  listed, and the image is dumped again. Each way can be run alone by naming
+  it in `args`, such as `gpt-newfs`.
 
 ## What a run keeps
 

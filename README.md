@@ -157,6 +157,12 @@ A probe that takes arguments gets them from the `args` input:
   `-n -W` and dumped, and every file is read back against what was written.
   The passphrase of every encrypted volume is `apfs-probes`, so each image
   can be unlocked.
+- `xattrsize`: how large an extended attribute macOS sets on APFS. An
+  ordinary attribute and a resource fork are each set on a fresh file at
+  sizes doubling from 4 KiB to 2 GiB, then bisected to the byte at the first
+  size refused, and each is read back by size. A resource fork written as
+  4 KiB at position 0 and 4 KiB at 16 MiB is kept in a dumped container, for
+  how a fork with a gap is stored.
 
 ## What a run keeps
 

@@ -107,6 +107,21 @@ A probe that takes arguments gets them from the `args` input:
   other marker value, header sizes that cut or extend
   the content, and type 10 with the content in the resource fork, alone and in
   type 8's table; each file read back by the kernel after a remount.
+- `corpus`: test data for a reader of APFS. Ten containers per run cover
+  every block size from 4 to 64 KiB, both kinds of name, one and two
+  volumes, and two Time Machine snapshots with changes between and after
+  them, so that any two of those choices appear together in some container.
+  Every volume holds the same tree: every kind of file, small and large
+  attributes, names that test the volume's equivalence, a directory of
+  2,500 entries, clones, and a file of each compression type macOS reads
+  from zlib to LZBITMAP, all of this repository's own text. Each container
+  is mounted read-only twice after it is written, and each time every
+  volume and snapshot is recorded as macOS reports it and the image is
+  dumped again. The run checks that macOS read every file as written, that
+  the two passes recorded the same, and that all three dumps are one image,
+  so each manifest describes exactly the image beside it. `corpus.json`
+  names each image, its volumes and their snapshots, and the manifest each
+  is held to.
 
 ## What a run keeps
 

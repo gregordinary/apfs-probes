@@ -160,8 +160,9 @@ row() {
                     sstep "$n-addvol-root" 120 newfs_apfs -A "$other" -v "$second" "/dev/$cont" ||
                     sstep "$n-addvol-diskutil" 120 diskutil apfs addVolume "$cont" "$personality" "$second" -nomount
             fi
-            # macOS 27 can list a volume just added before it reports the
-            # volume's name, so the listing is taken again until it names it.
+            # macOS can list a volume just added before it reports the
+            # volume's name (seen on 15 and 27), so the listing is taken
+            # again until it names it.
             list="$n-list-2"
             apfs_list "$list"
             if [ "$vols" = two ]; then

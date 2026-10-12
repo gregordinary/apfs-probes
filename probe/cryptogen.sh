@@ -22,9 +22,9 @@
 # diskutil apfs unlockVolume. Every stage records what diskutil lists of the
 # volume, its cryptographic users, and every file as macOS reads it back
 # (fsprobe.py manifest). The volume is then unmounted, the container checked
-# with fsck_apfs -n and -n -W on its attached disk, which is where fsck_apfs
-# reads an encrypted volume's keybag from, and the image detached and dumped,
-# so each stage leaves an image of its own. cryptogenutil.py check holds every
+# with fsck_apfs -n and -n -W on its own disk while attached, which is where
+# fsck_apfs reads an encrypted volume's keybag from, and the image detached and
+# dumped, so each stage leaves an image of its own. cryptogenutil.py check holds every
 # stage's reading to the files written.
 #
 # Every passphrase is PASS below, so each encrypted image can be unlocked.
@@ -84,12 +84,14 @@ convert() {
         step "$p-wait" $((WAIT + 60)) "$PY" "$CU" wait "$VDEV" "$state" "$WAIT" "$OUT/waits/$p.json"
 }
 
-# finish NAME IMAGE : record the open volume, close it, check the container on
-# its attached disk, detach it, and dump the image. fsck_apfs reads an
-# encrypted volume's keybag through the disk, and a check of the file alone
-# fails for want of it.
+# finish NAME IMAGE : record the open volume, close it, check the container
+# while it is attached, detach it, and dump the image. fsck_apfs reads an
+# encrypted volume's keybag through the disk, so a check of the file alone
+# fails for want of it; the check that counts is of the container's own disk,
+# and the physical store under it and diskutil's verification are kept beside
+# it.
 finish() {
-    local p=$1 img=$2 rdev
+    local p=$1 img=$2
     if [ -n "$VDEV" ]; then
         apfs_list "$p-state"
         step "$p-state-text" 60 diskutil apfs list "$CONT"
@@ -99,11 +101,14 @@ finish() {
             sstep "$p-manifest" 300 "$PY" "$HERE/fsprobe.py" manifest "$MNT" "$OUT/manifests/$p.json"
         unmount_vol "$p" "$VDEV"
     fi
-    [ -n "$DEV" ] || DEV=$(attach_raw "$p-check" "$img") || DEV=""
+    if [ -z "$DEV" ]; then
+        DEV=$(attach_raw "$p-check" "$img") && list_named "$p-check" "$DEV" || DEV=""
+    fi
     if [ -n "$DEV" ]; then
-        rdev=/dev/r${DEV#/dev/}
-        sstep "$p-fsck" 600 fsck_apfs -n "$rdev"
-        sstep "$p-fsck-warnings" 600 fsck_apfs -n -W "$rdev"
+        sstep "$p-fsck" 600 fsck_apfs -n "/dev/r$CONT"
+        sstep "$p-fsck-warnings" 600 fsck_apfs -n -W "/dev/r$CONT"
+        sstep "$p-fsck-store" 600 fsck_apfs -n "/dev/r${DEV#/dev/}"
+        sstep "$p-verify" 600 diskutil verifyVolume "$CONT"
         detach "$p" "$DEV"
     fi
     dump "$p" "$img"

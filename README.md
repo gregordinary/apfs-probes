@@ -154,9 +154,10 @@ A probe that takes arguments gets them from the `args` input:
   reports it complete; and a volume made encrypted by `newfs_apfs -E` and one
   added encrypted by `diskutil apfs addVolume -passphrase` are given the same
   tree. After each stage the container is checked with `fsck_apfs -n` and
-  `-n -W` on its attached disk, where `fsck_apfs` reads an encrypted volume's
-  keybag from, the image is dumped, and every file is read back against what
-  was written.
+  `-n -W` on its own disk while attached, where `fsck_apfs` reads an encrypted
+  volume's keybag from, and on the physical disk under it and by `diskutil
+  verifyVolume` beside that; the image is dumped, and every file is read back
+  against what was written.
   The passphrase of every encrypted volume is `apfs-probes`, so each image
   can be unlocked.
 - `xattrsize`: how large an extended attribute macOS sets on APFS. An

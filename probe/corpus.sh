@@ -139,7 +139,7 @@ read_pass() {
 
 # row NAME BLOCK-SIZE KIND VOLUMES SNAPSHOTS : one container of the corpus.
 row() {
-    local n=$1 bs=$2 kind=$3 vols=$4 snaps=$5 img dev cont first second own other personality
+    local n=$1 bs=$2 kind=$3 vols=$4 snaps=$5 img dev cont first second own other personality list i
     section "$n"
     mkdir -p "$MAN/$n"
     step "$n-row" 30 "$PY" "$CU" row "$MAN/$n/row.json" "$n" "$bs" "$kind" "$vols" "$snaps"
@@ -160,9 +160,20 @@ row() {
                     sstep "$n-addvol-root" 120 newfs_apfs -A "$other" -v "$second" "/dev/$cont" ||
                     sstep "$n-addvol-diskutil" 120 diskutil apfs addVolume "$cont" "$personality" "$second" -nomount
             fi
-            apfs_list "$n-list-2"
-            write_volume "$n" "$n-list-2" "$cont" "$first" "$snaps"
-            [ "$vols" = two ] && write_volume "$n" "$n-list-2" "$cont" "$second" none
+            # macOS 27 can list a volume just added before it reports the
+            # volume's name, so the listing is taken again until it names it.
+            list="$n-list-2"
+            apfs_list "$list"
+            if [ "$vols" = two ]; then
+                for i in 1 2 3 4 5 6 7 8 9 10; do
+                    volume_named "$list" "$cont" "$second" >/dev/null 2>&1 && break
+                    sleep 1
+                    list="$n-list-2-again$i"
+                    apfs_list "$list"
+                done
+            fi
+            write_volume "$n" "$list" "$cont" "$first" "$snaps"
+            [ "$vols" = two ] && write_volume "$n" "$list" "$cont" "$second" none
         fi
         detach "$n" "$dev"
     fi

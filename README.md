@@ -146,6 +146,17 @@ A probe that takes arguments gets them from the `args` input:
   attached and listed, every volume macOS lists is mounted and its root
   listed, and the image is dumped again. Each way can be run alone by naming
   it in `args`, such as `gpt-newfs`.
+- `cryptogen`: what a volume records as its encryption is turned on and off,
+  and volumes encrypted from the start. One volume holding a small tree is
+  encrypted with a passphrase by `diskutil apfs encryptVolume`, decrypted by
+  `decryptVolume`, written once more, and encrypted and decrypted again,
+  each change waited on, with the volume mounted, until `diskutil apfs list`
+  reports it complete; and a volume made encrypted by `newfs_apfs -E` and one
+  added encrypted by `diskutil apfs addVolume -passphrase` are given the same
+  tree. After each stage the image is checked with `fsck_apfs -n` and
+  `-n -W` and dumped, and every file is read back against what was written.
+  The passphrase of every encrypted volume is `apfs-probes`, so each image
+  can be unlocked.
 
 ## What a run keeps
 

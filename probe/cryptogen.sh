@@ -13,18 +13,19 @@
 #          A stage that changes the encryption keeps the volume mounted until
 #          diskutil apfs list reports the change complete on three listings
 #          in a row (cryptogenutil.py wait), or until a time limit.
-#   born   a volume made encrypted, by newfs_apfs -E -S in a plain file
-#          (born-newfs) and by diskutil apfs addVolume -passphrase in an
-#          empty container (born-diskutil); each is unlocked, given the same
-#          tree, and locked again by unmounting it.
+#   born   a volume made encrypted, by newfs_apfs -E -S on the attached
+#          disk of a plain file (born-newfs) and by diskutil apfs addVolume
+#          -passphrase in an empty container (born-diskutil); each is
+#          unlocked, given the same tree, and locked again by unmounting it.
 #
 # An encrypted volume that a plain mount refuses is unlocked with
 # diskutil apfs unlockVolume. Every stage records what diskutil lists of the
 # volume, its cryptographic users, and every file as macOS reads it back
-# (fsprobe.py manifest). The volume is then unmounted and the image
-# detached, checked with fsck_apfs -n and -n -W, and dumped, so each stage
-# leaves an image of its own. cryptogenutil.py check holds every stage's
-# reading to the files written.
+# (fsprobe.py manifest). The volume is then unmounted, the container checked
+# with fsck_apfs -n and -n -W on its attached disk, which is where fsck_apfs
+# reads an encrypted volume's keybag from, and the image detached and dumped,
+# so each stage leaves an image of its own. cryptogenutil.py check holds every
+# stage's reading to the files written.
 #
 # Every passphrase is PASS below, so each encrypted image can be unlocked.
 #
@@ -83,10 +84,12 @@ convert() {
         step "$p-wait" $((WAIT + 60)) "$PY" "$CU" wait "$VDEV" "$state" "$WAIT" "$OUT/waits/$p.json"
 }
 
-# finish NAME IMAGE : record the open volume, close it, check the image, and
-# dump it.
+# finish NAME IMAGE : record the open volume, close it, check the container on
+# its attached disk, detach it, and dump the image. fsck_apfs reads an
+# encrypted volume's keybag through the disk, and a check of the file alone
+# fails for want of it.
 finish() {
-    local p=$1 img=$2
+    local p=$1 img=$2 rdev
     if [ -n "$VDEV" ]; then
         apfs_list "$p-state"
         step "$p-state-text" 60 diskutil apfs list "$CONT"
@@ -96,9 +99,13 @@ finish() {
             sstep "$p-manifest" 300 "$PY" "$HERE/fsprobe.py" manifest "$MNT" "$OUT/manifests/$p.json"
         unmount_vol "$p" "$VDEV"
     fi
-    [ -n "$DEV" ] && detach "$p" "$DEV"
-    step "$p-fsck" 600 fsck_apfs -n "$img"
-    step "$p-fsck-warnings" 600 fsck_apfs -n -W "$img"
+    [ -n "$DEV" ] || DEV=$(attach_raw "$p-check" "$img") || DEV=""
+    if [ -n "$DEV" ]; then
+        rdev=/dev/r${DEV#/dev/}
+        sstep "$p-fsck" 600 fsck_apfs -n "$rdev"
+        sstep "$p-fsck-warnings" 600 fsck_apfs -n -W "$rdev"
+        detach "$p" "$DEV"
+    fi
     dump "$p" "$img"
 }
 
@@ -147,9 +154,12 @@ case "$ONLY" in
         p=born-newfs
         section "$p"
         img="$WORK/$p.img"
-        if step "$p-mkfile" 30 mkfile -n 256m "$img" &&
-            { step "$p-newfs" 300 newfs_apfs -E -S "$PASS" -v Born "$img" ||
-                sstep "$p-newfs-root" 300 newfs_apfs -E -S "$PASS" -v Born "$img"; }; then
+        # newfs_apfs encrypts only a container it can publish as a disk, which a
+        # plain file is not, so the file is attached first.
+        if step "$p-mkfile" 30 mkfile -n 256m "$img" && dev=$(attach_raw "$p-format" "$img"); then
+            step "$p-newfs" 300 newfs_apfs -E -S "$PASS" -v Born "$dev" ||
+                sstep "$p-newfs-root" 300 newfs_apfs -E -S "$PASS" -v Born "$dev"
+            detach "$p-format" "$dev"
             open_volume "$p" "$img" Born && populate "$p"
             finish "$p" "$img"
         fi

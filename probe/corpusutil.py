@@ -22,7 +22,8 @@ snapshots receives between and after them, and records the contents after it.
 the tree a reader of the image must reproduce. Attributes are listed the way
 any program lists them, so a compressed file's two compression attributes
 are not among them; its compression type and size are recorded beside, from
-the header. Creation times come from getattrlist, whole to the nanosecond.
+the header. A device node's attributes are null: macOS refuses to list them.
+Creation times come from getattrlist, whole to the nanosecond.
 `snapshots` lists a volume's snapshots in the order of their transactions.
 
 `row` records what one row of the covering array asks for. `check` holds a
@@ -183,9 +184,13 @@ def clone(src, dst):
 
 # Every content a compressed file holds: one that fits the attribute, one a
 # byte past a chunk, one of several chunks, and one with a chunk of random
-# bytes in the middle, which zlib keeps raw.
+# bytes in the middle. afsctool leaves two of them uncompressed on every
+# version seen, mixed-204800 under zlib and text-65537 under LZVN, so each
+# compressor is given the contents it compresses.
 COMPRESSED = ["text-1000", "text-65537", "text-204800", "mixed-204800"]
-AFSCTOOL = [("zlib", "ZLIB"), ("lzvn", "LZVN"), ("lzfse", "LZFSE")]
+AFSCTOOL = [("zlib", "ZLIB", ["text-1000", "text-65537", "text-204800"]),
+            ("lzvn", "LZVN", ["text-1000", "text-204800", "mixed-204800"]),
+            ("lzfse", "LZFSE", COMPRESSED)]
 STORED = 0xCC
 PLAIN = [("empty", 0), ("small", 6), ("under-4k", 4095), ("block-4k", 4096), ("over-4k", 4097),
          ("multi", 3 * 4096 + 17), ("block-64k", 65536), ("large", (1 << 20) + 3)]
@@ -235,8 +240,10 @@ def build(t, afsctool, algos_json):
               os.makedev(major, minor))
     t.run("special/sock", make_socket, t.p("special"), "sock")
 
-    # Times before 1970, at it, past 2038 and past 2106, and every nanosecond
-    # digit. macOS 14's stat reports a time before 1970 with a nonzero
+    # Times before 1970, at it, past 2038 and past 2106, the largest the
+    # field holds, and every nanosecond digit. A time is a signed count of
+    # nanoseconds, so the largest is in 2262; a later one set reads back as
+    # that largest. macOS 14's stat reports a time before 1970 with a nonzero
     # fraction as though it were unsigned, so its manifest could not state the
     # stored value, and those two files are left out there.
     signed_fraction = macos_major() >= 15
@@ -244,7 +251,8 @@ def build(t, afsctool, algos_json):
         "pre1900": -2208988800 * 10**9 - 5 * 10**9,
         "epoch": 0,
         "y2038": 2**31 * 10**9,
-        "y2400": 13569465600 * 10**9 + 987654321,
+        "y2200": 7258118400 * 10**9 + 987654321,
+        "max": 2**63 - 1,
         "nsec": 1700000000 * 10**9 + 123456789,
     }
     if signed_fraction:
@@ -319,10 +327,10 @@ def build(t, afsctool, algos_json):
     # Compression: zlib, LZVN and LZFSE as afsctool writes them, and LZBITMAP
     # and content kept after the marker byte as this script stores them.
     contents = compressutil.contents()
-    for label, name in AFSCTOOL:
+    for label, name, kept in AFSCTOOL:
         d = "compress/afsctool-" + label
         t.mkdir(d)
-        for c in COMPRESSED:
+        for c in kept:
             t.put(d + "/" + c, contents[c])
         if afsctool:
             proc = subprocess.run([afsctool, "-c", "-T", name, t.p(d)], capture_output=True)
@@ -523,7 +531,12 @@ def manifest(mnt, out):
             entry["xattrs"] = [{"name_hex": n.hex(), "len": len(v), "sha256": sha(v)}
                                for n, v in ((n, get_xattr(full, n)) for n in list_xattrs(full))]
         except OSError as e:
-            fail(rel, "xattrs", e)
+            # macOS refuses to list a device node's attributes, and the tree
+            # sets none on one; its entry says the list is unknown.
+            if e.errno == errno.EPERM and (stat.S_ISCHR(st.st_mode) or stat.S_ISBLK(st.st_mode)):
+                entry["xattrs"] = None
+            else:
+                fail(rel, "xattrs", e)
         if stat.S_ISREG(st.st_mode):
             if entry["flags"] & UF_COMPRESSED:
                 entry["compression"] = compressutil.compression_of(full)

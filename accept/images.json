@@ -3538,7 +3538,7 @@
    "content_sha256": "7d0385924c9067faddaf6fcf8e020947b2a8cba141b70c2f1bd67b061a62723b",
    "digest": "bd4421419c6b810f",
    "dump": "edge-late.bd",
-   "expect": "accept",
+   "expect": "warn-future-time",
    "free_blocks": 261082,
    "name": "edge-late",
    "nonzero_blocks": 27,

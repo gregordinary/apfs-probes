@@ -23,7 +23,8 @@ of accept/ states: its identifiers and times are the runner's.
 
 `listing` holds the container `diskutil apfs list` reports to the one
 images.json states: its identifier, its capacity, and its volumes, each found
-by its identifier, with its name and no role. It prints each volume's
+by its identifier, with its name and no role. A name longer than 127 bytes
+is listed shortened, which is held to the rule `listed_short` states. It prints each volume's
 device, in the order listed, for the probe to mount. `write` writes a file
 to a volume mounted read-write, its content named by the container and the
 volume's identifier, and `read` reads it back after the volume is mounted
@@ -32,7 +33,9 @@ again.
 `verdict` gathers one container's steps into verdicts/NAME.json. A
 container is accepted where every check passes:
 
-- `fsck_apfs -n -W` exits 0 on the container as sent;
+- `fsck_apfs -n -W` exits 0 on the container as sent, or, for a container
+  images.json expects to warn that its time is later than the runner's
+  clock, warns of that alone;
 - the listing is the one images.json states;
 - every volume mounts read-only, `diskutil info` reports its name, its
   identifier, its kind of name and its block size, and its root directory's
@@ -177,6 +180,30 @@ def control(out, name, bs, size, kind, volume):
 
 # -- the listing --------------------------------------------------------------
 
+# `diskutil apfs list` gives a name longer than this as its leading whole
+# characters: of 85 three-byte characters, the first 42. `diskutil info` gives
+# the whole name, and the read-only pass holds it to the statement.
+LISTED_NAME_BYTES = 127
+
+
+def listed_short(listed, stated):
+    """Whether LISTED is STATED as `diskutil apfs list` shortens a long name:
+    its leading whole characters, within LISTED_NAME_BYTES and no more than
+    one character short of them."""
+    if len(stated) <= LISTED_NAME_BYTES or not stated.startswith(listed):
+        return False
+    try:
+        whole = stated.decode("utf-8")
+        listed.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    fit = b""
+    for ch in whole:
+        if len(fit) + len(ch.encode()) > LISTED_NAME_BYTES:
+            break
+        fit += ch.encode()
+    return listed == fit
+
 def listing(acc, out, name, listing_path, container):
     image = stated(acc, out, name)
     problems, accounting = [], {}
@@ -196,7 +223,7 @@ def listing(acc, out, name, listing_path, container):
         listed = found.get("Volumes", [])
         if len(listed) != len(image["volumes"]):
             problems.append("%d volumes listed, %d stated" % (len(listed), len(image["volumes"])))
-        order = []
+        order, shortened = [], []
         for want in image["volumes"]:
             slot = want["slot"]
             if want["uuid"] is None:
@@ -210,7 +237,10 @@ def listing(acc, out, name, listing_path, container):
             got = listed[at]
             name_bytes = (got.get("Name") or "").encode()
             if name_bytes.hex() != want["name_hex"]:
-                problems.append("slot %d: name %s, stated %s" % (slot, name_bytes.hex(), want["name_hex"]))
+                if listed_short(name_bytes, bytes.fromhex(want["name_hex"])):
+                    shortened.append(slot)
+                else:
+                    problems.append("slot %d: name %s, stated %s" % (slot, name_bytes.hex(), want["name_hex"]))
             if got.get("Roles"):
                 problems.append("slot %d: roles %s, stated none" % (slot, got.get("Roles")))
             if got.get("Encryption") or got.get("FileVault") or got.get("Locked"):
@@ -223,6 +253,7 @@ def listing(acc, out, name, listing_path, container):
             devices.append(got.get("DeviceIdentifier"))
         accounting = {
             "slots_in_listed_order": [slot for _, slot in sorted(order)],
+            "slots_listed_shortened": shortened,
             "capacity_free": found.get("CapacityFree"),
             "stated_free": (image.get("free_blocks") * image["block_size"]
                             if image.get("free_blocks") is not None else None),
@@ -354,11 +385,42 @@ def volume_checks(image, out, name, k, problems):
     return slot
 
 
+def fsck_warnings(out, step):
+    """The warnings fsck_apfs gave in STEP about the container, and its count
+    of failures; the note that an image file is no disk is not one of them."""
+    lines, failures = [], None
+    for suffix in (".out", ".err"):
+        path = os.path.join(out, "log", step + suffix)
+        if not os.path.exists(path):
+            continue
+        for line in open(path, encoding="utf-8", errors="replace"):
+            line = line.rstrip("\n")
+            if line.startswith("warning:") and "not a valid disk name/path" not in line:
+                lines.append(line)
+            if " failures and " in line:
+                failures = int(line.split()[0])
+    return lines, failures
+
+
+def fsck_passes(image, out, step, status):
+    """Whether fsck_apfs -n -W passed STEP, with the warnings an image whose
+    time is later than the runner's clock is expected to draw: that a volume
+    superblock's time is greater than the current time, and nothing else."""
+    rc = status.get(step)
+    if rc == 0:
+        return True
+    if image["expect"] != "warn-future-time" or rc != 8:
+        return False
+    warnings, failures = fsck_warnings(out, step)
+    return failures == 0 and bool(warnings) and all(
+        "is greater than current time" in w for w in warnings)
+
+
 def verdict(acc, out, name):
     image = stated(acc, out, name)
     status = steps(out)
     problems = []
-    if status.get(name + "-fsck") != 0:
+    if not fsck_passes(image, out, name + "-fsck", status):
         problems.append("fsck_apfs -n -W exits %s on the container as sent" % status.get(name + "-fsck"))
     try:
         listed = read_json(os.path.join(out, "listing", name + ".json"))
@@ -378,7 +440,7 @@ def verdict(acc, out, name):
             problems.append("%s: the mount after the write failed" % r)
         elif status.get(r + "-read") != 0:
             problems.append("%s: the file did not read back" % r)
-    if status.get(name + "-fsck-written") != 0:
+    if not fsck_passes(image, out, name + "-fsck-written", status):
         problems.append("fsck_apfs -n -W exits %s after the write" % status.get(name + "-fsck-written"))
     result = {
         "name": name,
@@ -389,7 +451,9 @@ def verdict(acc, out, name):
         "slots_listed": slots,
         "accounting": listed.get("accounting", {}),
     }
-    result["as_expected"] = (result["verdict"] == "accepted") == (image["expect"] == "accept")
+    result["fsck_warnings"] = {k: fsck_warnings(out, name + k)[0] for k in ("-fsck", "-fsck-written")}
+    result["as_expected"] = (result["verdict"] == "accepted") == (
+        image["expect"] in ("accept", "warn-future-time"))
     write_json(os.path.join(out, "verdicts", name + ".json"), result)
     print(json.dumps({"verdict": result["verdict"], "as_expected": result["as_expected"],
                       "problems": len(problems)}))

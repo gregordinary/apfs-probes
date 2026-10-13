@@ -191,13 +191,16 @@ A probe that takes arguments gets them from the `args` input:
   volume's name, identifier and kind of name, with its root directory's
   owner, mode, flags and times. They cover every block size, every release
   profile, sizes from the smallest to 16 TiB, one to a hundred volumes and
-  both kinds of name. Twenty-six are to be accepted. Two are to be refused:
-  one has a checksum left stale, and the other a free queue's node limit of
-  zero, which `fsck_apfs` passes. Each container goes through one batch:
+  both kinds of name. Twenty-five are to be accepted, and a twenty-sixth
+  too but for `fsck_apfs -W`'s warning that its times are later than the
+  runner's clock, which they are. Two are to be refused: one has a checksum
+  left stale, and the other a free queue's node limit of zero, which
+  `fsck_apfs` passes. Each container goes through one batch:
   `fsck_apfs -n -W`; an attach whose `diskutil apfs list` is the one
-  stated; every volume mounted read-only, described by `diskutil info`,
-  its entries recorded and listed again by `apfs_checkseal -q -v`; every
-  volume mounted read-write and given a file; `fsck_apfs -n -W` again, and
+  stated, which gives a name of more than 127 bytes as its leading whole
+  characters within them; every volume mounted read-only, described by
+  `diskutil info`, its entries recorded and listed again by `apfs_checkseal
+  -q -v`; every volume mounted read-write and given a file; `fsck_apfs -n -W` again, and
   the image dumped as macOS left it; and every volume mounted once more and
   the file read back. Three containers `newfs_apfs` formats on the runner go
   through the same batch, so a check that fails on Apple's own container is

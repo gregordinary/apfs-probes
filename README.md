@@ -184,6 +184,28 @@ A probe that takes arguments gets them from the `args` input:
   modes of `apfs_checkseal`, `apfs_stats` and `sm_stats`, `eslogger`'s file
   events, and whether a virtual machine starts inside the runner.
 
+- `accept`: whether macOS accepts the containers another implementation
+  formats. `accept/` holds 28 empty containers that ferrosys's APFS writer
+  formatted, each a block dump, and `images.json`, which states what macOS
+  should report of each: the container's identifier and capacity, and every
+  volume's name, identifier and kind of name, with its root directory's
+  owner, mode, flags and times. They cover every block size, every release
+  profile, sizes from the smallest to 16 TiB, one to a hundred volumes and
+  both kinds of name. Twenty-six are to be accepted. Two are to be refused:
+  one has a checksum left stale, and the other a free queue's node limit of
+  zero, which `fsck_apfs` passes. Each container goes through one batch:
+  `fsck_apfs -n -W`; an attach whose `diskutil apfs list` is the one
+  stated; every volume mounted read-only, described by `diskutil info`,
+  its entries recorded and listed again by `apfs_checkseal -q -v`; every
+  volume mounted read-write and given a file; `fsck_apfs -n -W` again, and
+  the image dumped as macOS left it; and every volume mounted once more and
+  the file read back. Three containers `newfs_apfs` formats on the runner go
+  through the same batch, so a check that fails on Apple's own container is
+  a fault of the check. `verdicts.json` gives each container's verdict beside
+  what was expected of it, with the release. The argument `few` runs the
+  containers of at most five volumes and `many` the one of a hundred;
+  `controls` runs the three `newfs_apfs` containers.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:
@@ -216,8 +238,9 @@ either form:
 ## Licenses
 
 Everything in this repository is licensed under MIT (`LICENSE-MIT`) or
-Apache-2.0 (`LICENSE-APACHE`), at your option. The files attached to its
-releases are covered in the next section.
+Apache-2.0 (`LICENSE-APACHE`), at your option, the containers under
+`accept/` among it. The files attached to its releases are covered in the
+next section.
 
 ## Release files
 

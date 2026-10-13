@@ -167,6 +167,18 @@ A probe that takes arguments gets them from the `args` input:
   size refused, and each is read back by size. A resource fork written as
   4 KiB at position 0 and 4 KiB at 16 MiB is kept in a dumped container, for
   how a fork with a gap is stored.
+- `observe`: what a runner lets a probe observe besides the images it
+  leaves. One operation, sixteen files written to a mounted volume and
+  synced, runs under `fs_usage`, DTrace's `io` provider and `ktrace`, and
+  `fcntl` `F_LOG2PHYS_EXT` gives each file's extents, so each tracer's block
+  numbers can be matched to them. The event codes `ktrace` filters on are
+  found by value: the operation runs on an HFS+ volume with every class
+  traced, and only the codes whose events carry the files' extents and
+  lengths are kept and then used to trace the operation on a container. The
+  probe also records the unified log with the APFS subsystem at debug level,
+  the sysctl names and registry properties that mention APFS, the verbose
+  modes of `apfs_checkseal`, `apfs_stats` and `sm_stats`, `eslogger`'s file
+  events, and whether a virtual machine starts inside the runner.
 
 ## What a run keeps
 

@@ -41,7 +41,7 @@ now() {
 # mount_at NAME VDEV MNT [readOnly] : mount VDEV at MNT.
 mount_at() {
     mkdir -p "$3"
-    sstep "$1-mount" 120 diskutil mount $4 -mountPoint "$3" "$2"
+    sstep "$1-mount" 120 diskutil mount ${4-} -mountPoint "$3" "$2"
 }
 
 # devices LIST CONTAINER : every volume of CONTAINER in LIST, one device a line.

@@ -281,7 +281,7 @@ step vz-run 300 xcrun swift "$HERE/vzsupport.swift"
 step cpu-vmx 30 sh -c 'sysctl -n machdep.cpu.features 2>/dev/null | tr " " "\n" | grep -x VMX || echo "no VMX flag"'
 
 section es
-step es-list 60 eslogger --list-events
+step es-events 60 eslogger --list-events
 if [ -n "$base" ]; then
     tracer es 240 "$OUT/es.ndjson" eslogger create write close rename unlink setextattr clone &&
         op es "$base" apfs

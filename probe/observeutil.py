@@ -16,8 +16,10 @@ whether the device offsets are offsets in the image.
 
 `match-text` reads a trace holding one I/O per line: fs_usage's, whose block
 number follows D=0x in hex (FIELD D=), or DTrace's, whose follows blk= in
-decimal (FIELD blk=). A line matches when its number, read as bytes,
-512-byte sectors or 4 KiB blocks, is an extent's start. OUT.json counts the
+decimal (FIELD blk=). DISK - reads every line as DISK's. A line matches when
+its number, read as bytes, 512-byte sectors or 4 KiB blocks, is an extent's
+start and the line gives the extent's length, in bytes, after B=0x or
+bytes=. OUT.json counts the
 lines naming each disk, the distinct starts matched in each unit by the lines
 naming DISK and by the rest, and, for the unit with the most on DISK, the
 second word of DISK's matching lines and of its others: fs_usage's
@@ -112,7 +114,8 @@ def match_text(argv):
         pattern, base = re.compile(r"\bblk=(\d+)"), 10
     else:
         raise SystemExit(f"no field {field}")
-    on_disk = re.compile(r"\b" + re.escape(disk) + r"\b")
+    on_disk = re.compile("" if disk == "-" else r"\b" + re.escape(disk) + r"\b")
+    length = re.compile(r"\bB=0x([0-9A-Fa-f]+)|\bbytes=(\d+)")
     any_disk = re.compile(r"\bdisk\d+(?:s\d+)*\b")
     lines = 0
     by_disk = collections.Counter()
@@ -125,7 +128,9 @@ def match_text(argv):
             continue
         by_disk.update(set(any_disk.findall(line)) or {""})
         value = int(m.group(1), base)
-        units = hits(value, at)
+        n = length.search(line)
+        n = (int(n.group(1), 16) if n.group(1) else int(n.group(2))) if n else None
+        units = [u for u in hits(value, at) if at[value * u] == n]
         if not on_disk.search(line):
             for u in units:
                 elsewhere[u].add(value * u)

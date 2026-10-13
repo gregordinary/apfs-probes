@@ -36,9 +36,11 @@
 #   es        eslogger's file events around the operation, and the templates
 #             xctrace lists
 #
-# observeutil.py reads each trace against the files' extents: fs_usage's and
-# DTrace's block numbers in fsu-match.json and dtrace-match.json, ktrace's
-# events in ktrace-control.json and ktrace-apfs.json.
+# observeutil.py reads each trace against the files' extents: fs_usage's block
+# numbers on the volume's disk and the container's in fsu-match.json and
+# fsu-match-container.json, DTrace's, whose device has no name there, in
+# dtrace-match.json, and ktrace's events in ktrace-control.json and
+# ktrace-apfs.json.
 #
 # Usage: observe.sh OUTDIR
 
@@ -64,11 +66,18 @@ tracer() {
 }
 
 # tracer_stop PROCESS : three seconds on, interrupt the tracer, whose process
-# is named PROCESS, wait for it, and record it as a step.
+# is named PROCESS, give it ten seconds to finish, then end it, wait for it,
+# and record it as a step.
 tracer_stop() {
-    local rc
+    local rc i st
     sleep 3
     sudo -n pkill -INT -x "$1"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        st=$(ps -o stat= -p "$T_PID" 2>/dev/null | tr -d ' ')
+        case $st in "" | Z*) break ;; esac
+        sleep 1
+    done
+    case $st in "" | Z*) ;; *) sudo -n pkill -TERM -x "$1" ;; esac
     wait "$T_PID"
     rc=$?
     [ -s "$OUT/log/$T_NAME.err" ] || rm -f "$OUT/log/$T_NAME.err"
@@ -77,7 +86,10 @@ tracer_stop() {
 
 # op NAME BASE KIND : the operation, on a fresh copy of BASE, an image holding
 # a container (KIND apfs) or an HFS+ volume (KIND hfs) on the whole disk.
-# log/NAME-l2p.out holds the files' extents and op-NAME.disk names the disk.
+# log/NAME-l2p.out holds the files' extents. op-NAME.disk names the attached
+# disk, and op-NAME.vol the disk mounted, which on a container is the volume:
+# the kernel reports a file's data I/O on the volume's disk and the
+# container's own on the container's.
 op() {
     local n=$1 base=$2 kind=$3 img="$WORK/op-$1.img" mnt="$WORK/mnt-$1" dev cont vol
     step "$n-copy-image" 60 cp "$base" "$img" || return 1
@@ -87,15 +99,16 @@ op() {
     if [ "$kind" = apfs ]; then
         if cont=$(container_of "$n-list" "$dev") && vol=$(first_volume "$n-list" "$cont"); then
             vol=/dev/$vol
+            echo "$cont" >"$OUT/op-$n.cont"
         else
             detach "$n" "$dev"
             return 1
         fi
     fi
+    echo "${vol#/dev/}" >"$OUT/op-$n.vol"
     if mount_vol "$n" "$vol" "$mnt"; then
         [ "$kind" = apfs ] && sstep "$n-stats-mounted" 30 "$RES/apfs_stats"
-        sstep "$n-write" 120 sh -c 'for i in 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15; do
-            dd if=/dev/urandom of="$1/f$i" bs=4096 count=17 2>/dev/null || exit 1; done' sh "$mnt"
+        sstep "$n-write" 120 sh -c 'for i in $(seq -w 0 15); do dd if=/dev/urandom of="$1/f$i" bs=4096 count=17 2>/dev/null || exit 1; done' sh "$mnt"
         sstep "$n-sync" 60 sync
         [ "$kind" = apfs ] && sstep "$n-stats-written" 30 "$RES/apfs_stats"
         sstep "$n-l2p" 30 sh -c '"$1" "$2"/f*' sh "$WORK/l2p" "$mnt"
@@ -115,15 +128,15 @@ section env
 step sw_vers 30 sw_vers
 step uname 30 uname -a
 step runner-env 30 sh -c 'env | grep -E "^(ImageOS|ImageVersion|RUNNER_ARCH|RUNNER_LABEL)=" | sort'
-step sysctl-hw 30 sh -c 'for n in hw.model hw.ncpu hw.memsize machdep.cpu.brand_string \
-    kern.hv_support kern.hv_vmm_present kern.bootargs; do printf "%s: " "$n"; sysctl -n "$n" 2>&1; done'
+step sysctl-hw 30 sh -c 'for n in $1; do printf "%s: " "$n"; sysctl -n "$n" 2>&1; done' sh \
+    "hw.model hw.ncpu hw.memsize machdep.cpu.brand_string kern.hv_support kern.hv_vmm_present kern.bootargs"
 step csrutil 30 csrutil status
 step nvram-boot-args 30 nvram boot-args
 step sysext 60 systemextensionsctl list
 step ps 30 ps -axo pid,user,comm
 step sudo 30 sudo -n id
-step tracers 30 sh -c 'ls -l /usr/bin/fs_usage /usr/bin/ktrace /usr/sbin/dtrace /usr/bin/eslogger \
-    /usr/bin/iosnoop /usr/bin/iotop 2>&1'
+step tracers 30 ls -l /usr/bin/fs_usage /usr/bin/ktrace /usr/sbin/dtrace /usr/bin/eslogger \
+    /usr/bin/iosnoop /usr/bin/iotop
 for p in fs_usage ktrace dtrace eslogger iosnoop; do
     step "man-$p" 60 sh -c 'MANPAGER=cat man "$1" | col -bx' sh "$p"
 done
@@ -151,9 +164,12 @@ section fs_usage
 if [ -n "$base" ]; then
     tracer fsu 240 "$OUT/fsu.out" fs_usage -w -f diskio && op fsu "$base" apfs
     tracer_stop fs_usage
-    [ -s "$OUT/op-fsu.disk" ] &&
+    [ -s "$OUT/op-fsu.vol" ] &&
         step fsu-match 120 "$PY" "$OBS" match-text "$OUT/fsu.out" "$OUT/log/fsu-l2p.out" \
-            "$(cat "$OUT/op-fsu.disk")" D= "$OUT/fsu-match.json"
+            "$(cat "$OUT/op-fsu.vol")" D= "$OUT/fsu-match.json"
+    [ -s "$OUT/op-fsu.cont" ] &&
+        step fsu-match-container 120 "$PY" "$OBS" match-text "$OUT/fsu.out" "$OUT/log/fsu-l2p.out" \
+            "$(cat "$OUT/op-fsu.cont")" D= "$OUT/fsu-match-container.json"
 fi
 
 section dtrace
@@ -169,9 +185,9 @@ EOF
 if [ -n "$base" ]; then
     tracer dtrace-io 240 "$OUT/dtrace-io.out" dtrace -q -s "$WORK/io.d" && op dtrace "$base" apfs
     tracer_stop dtrace
-    [ -s "$OUT/op-dtrace.disk" ] &&
+    [ -s "$OUT/log/dtrace-l2p.out" ] &&
         step dtrace-match 120 "$PY" "$OBS" match-text "$OUT/dtrace-io.out" "$OUT/log/dtrace-l2p.out" \
-            "$(cat "$OUT/op-dtrace.disk")" blk= "$OUT/dtrace-match.json"
+            - blk= "$OUT/dtrace-match.json"
 fi
 
 section ktrace

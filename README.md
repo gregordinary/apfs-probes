@@ -29,6 +29,10 @@ A probe that takes arguments gets them from the `args` input:
   an earlier image once, doing one thing, and unmounting, beside images whose
   mount did nothing.
 - `ladder`: fresh containers at about 160 sizes and block sizes.
+- `bounds`: fresh containers at every size in a range: by default the ranges
+  between two ladder sizes laid out differently, and otherwise the ranges a
+  run names as `BS/FIRST/LAST/STEP` arguments, which narrow each one to the
+  size where one layout gives way to the next.
 - `names`, `names-bmp`, `names-rest`: one file per Unicode code point, on a
   case-insensitive and a case-sensitive volume, with each name the volume
   refuses.

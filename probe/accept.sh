@@ -34,8 +34,11 @@ CU="$HERE/corpusutil.py"
 ACC="$ROOT/accept"
 mkdir -p "$WORK/mnt" "$OUT/volumes" "$OUT/files"
 
+# now N : the time, to the microsecond, a line of times/N: N's first and last
+# lines bound the kernel messages its batch drew.
 now() {
-    date -u '+%Y-%m-%dT%H:%M:%SZ' >>"$OUT/times/$1"
+    "$PY" -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).isoformat())' \
+        >>"$OUT/times/$1"
 }
 
 # mount_at NAME VDEV MNT [readOnly] : mount VDEV at MNT.

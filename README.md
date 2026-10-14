@@ -223,6 +223,19 @@ A probe that takes arguments gets them from the `args` input:
   given a file, `fsck_apfs -n` checks the partition, `diskutil info`
   records where it begins, and the whole image is dumped.
 
+- `records`: three things a populated volume's records hold that no earlier
+  image shows. `names` creates names that share one 22-bit directory hash,
+  some of one length and some of two, and two groups of three, each group in
+  the order listed in one directory and in the opposite order in another, on
+  a volume that folds case and on one formatted with `newfs_apfs -e`. `attrs`
+  sets an ordinary attribute at every size from 1 to 4,096 bytes and makes a
+  symbolic link at every target length from 1 to 1,023 bytes, to show where
+  each stops being held in its record. `blocks` copies the fixed tree of
+  `opsutil.py` with `ditto` into containers formatted at 8, 16 and 64 KiB
+  blocks. Each container is unmounted, mounted again and looked up by path,
+  checked with `fsck_apfs -n -W` and dumped. The arguments `names`, `attrs`
+  and `blocks` run one part each; no argument runs all three.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

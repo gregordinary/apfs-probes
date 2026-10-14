@@ -222,9 +222,12 @@ A probe that takes arguments gets them from the `args` input:
   Of a volume holding a tree, every entry is held by path to what is stated:
   its inode number, mode, owner, group, flags and four times; a file's link
   count, size and content, a link's target, a device's number, a
-  directory's names, and every entry's attributes; and `apfs_checkseal`'s
-  line for it. What macOS reports of a directory's link count and size, and
-  of a file's blocks, is recorded beside the verdict.
+  directory's names, and every entry's attributes, a resource fork among a
+  regular file's alone, since `listxattr` lists none on another kind; and
+  `apfs_checkseal`'s line for it, with the attributes it lists held to the
+  inode, since it lists an inode of several names' attributes once. What
+  macOS reports of a directory's link count and size, and of a file's
+  blocks, is recorded beside the verdict.
 
 - `resize`: what a container records once `diskutil apfs resizeContainer`
   has resized it. Two sparse 64 GiB images are partitioned by `diskutil

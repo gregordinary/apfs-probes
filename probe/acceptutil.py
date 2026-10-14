@@ -388,17 +388,33 @@ def compare_checkseal(tag, lines, stated, problems):
         for k, v in held.items():
             if f.get(k) != v:
                 wrong.append("%s %s %s, stated %s" % (path, k, f.get(k), v))
-        for x in w["xattrs"]:
-            got = found_xattrs.get((path, x["name_hex"]))
+    # An inode's attributes are listed once, under one of its names, so they are held to the
+    # inode: the attributes listed under any of its names against those stated of it.
+    ino_of = {e["path_hex"]: e["ino"] for e in stated}
+    listed_by_ino = {}
+    for (path, name), fields in found_xattrs.items():
+        if path in ino_of:
+            listed_by_ino.setdefault(ino_of[path], {})[name] = fields
+    seen = set()
+    for e in stated:
+        if e["ino"] in seen:
+            continue
+        seen.add(e["ino"])
+        got_all = listed_by_ino.get(e["ino"], {})
+        for x in e["xattrs"]:
+            got = got_all.get(x["name_hex"])
             if got is None:
-                wrong.append("%s attribute %s not listed" % (path, x["name_hex"]))
+                wrong.append("%s attribute %s not listed" % (e["path_hex"], x["name_hex"]))
                 continue
             if got.get("flags") != "%#x" % x["flags"]:
                 wrong.append("%s attribute %s flags %s, stated %#x"
-                             % (path, x["name_hex"], got.get("flags"), x["flags"]))
+                             % (e["path_hex"], x["name_hex"], got.get("flags"), x["flags"]))
             if "data_len" in x and got.get("data-len") != str(x["data_len"]):
                 wrong.append("%s attribute %s data-len %s, stated %d"
-                             % (path, x["name_hex"], got.get("data-len"), x["data_len"]))
+                             % (e["path_hex"], x["name_hex"], got.get("data-len"), x["data_len"]))
+        extra = set(got_all) - {x["name_hex"] for x in e["xattrs"]}
+        if extra:
+            wrong.append("%s attributes listed and not stated %s" % (e["path_hex"], sorted(extra)))
     if wrong:
         problems.append("%s: apfs_checkseal differs in %d places, the first %s"
                         % (tag, len(wrong), "; ".join(wrong[:3])))

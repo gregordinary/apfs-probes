@@ -198,8 +198,8 @@ A probe that takes arguments gets them from the `args` input:
   `fsck_apfs` passes. The other seventeen measure which node limits macOS
   takes: each sets one free queue's limit, the internal pool's or the main
   device's, to a value beside the one the writer gives or beside two
-  mebibytes of nodes, and `images.json` states the verdict a range of one
-  to two mebibytes of nodes would give. Each container goes through one batch:
+  mebibytes of nodes, and each is to be refused, as the one of zero is.
+  Each container goes through one batch:
   `fsck_apfs -n -W`; an attach whose `diskutil apfs list` is the one
   stated, which gives a name of more than 127 bytes as its leading whole
   characters within them; every volume mounted read-only, described by

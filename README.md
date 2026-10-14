@@ -185,7 +185,7 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 28 empty containers that ferrosys's APFS writer
+  formats. `accept/` holds 45 empty containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
@@ -195,7 +195,11 @@ A probe that takes arguments gets them from the `args` input:
   too but for `fsck_apfs -W`'s warning that its times are later than the
   runner's clock, which they are. Two are to be refused: one has a checksum
   left stale, and the other a free queue's node limit of zero, which
-  `fsck_apfs` passes. Each container goes through one batch:
+  `fsck_apfs` passes. The other seventeen measure which node limits macOS
+  takes: each sets one free queue's limit, the internal pool's or the main
+  device's, to a value beside the one the writer gives or beside two
+  mebibytes of nodes, and `images.json` states the verdict a range of one
+  to two mebibytes of nodes would give. Each container goes through one batch:
   `fsck_apfs -n -W`; an attach whose `diskutil apfs list` is the one
   stated, which gives a name of more than 127 bytes as its leading whole
   characters within them; every volume mounted read-only, described by

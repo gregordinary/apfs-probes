@@ -16,7 +16,8 @@ OUT is the probe's output directory.
 
 `select` prints the names of the containers WORDS asks for: `few`, those of
 at most five volumes; `many`, those of more; `controls`, the containers
-`newfs_apfs` formats on the runner beside them; or names. `verify` checks a
+`newfs_apfs` formats on the runner beside them; `limits`, those whose names
+begin `limit-`; or names. `verify` checks a
 dump against the digests images.json gives it. `control` records what a
 container `newfs_apfs` formatted should report, which is less than an image
 of accept/ states: its identifiers and times are the runner's.
@@ -125,6 +126,8 @@ def select(acc, words):
             want += [i["name"] for i in images(acc) if len(i["volumes"]) > FEW]
         elif w == "controls":
             want += CONTROLS
+        elif w == "limits":
+            want += [n for n in names if n.startswith("limit-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:

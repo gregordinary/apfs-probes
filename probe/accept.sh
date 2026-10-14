@@ -23,9 +23,10 @@
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
 # kernel's APFS messages during the run are kept in system-log.ndjson.
 #
-# Usage: accept.sh OUTDIR [few | many | controls | NAME...]
+# Usage: accept.sh OUTDIR [few | many | controls | limits | NAME...]
 #   with no argument, every container; few, those of at most five volumes;
-#   many, those of more; controls, the newfs_apfs containers
+#   many, those of more; controls, the newfs_apfs containers; limits, those
+#   whose names begin limit-
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift

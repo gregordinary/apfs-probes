@@ -230,11 +230,16 @@ A probe that takes arguments gets them from the `args` input:
   a volume that folds case and on one formatted with `newfs_apfs -e`. `attrs`
   sets an ordinary attribute at every size from 1 to 4,096 bytes and makes a
   symbolic link at every target length from 1 to 1,023 bytes, to show where
-  each stops being held in its record. `blocks` copies the fixed tree of
+  each stops being held in its record, and `attrnames` sets attributes named
+  with 1, 10 and 120 bytes at every size from 3,780 to 3,820 bytes, to show
+  whether that size depends on the name. `blocks` copies the fixed tree of
   `opsutil.py` with `ditto` into containers formatted at 8, 16 and 64 KiB
   blocks. Each container is unmounted, mounted again and looked up by path,
-  checked with `fsck_apfs -n -W` and dumped. The arguments `names`, `attrs`
-  and `blocks` run one part each; no argument runs all three.
+  checked with `fsck_apfs -n -W` and dumped. The arguments `names`, `attrs`,
+  `attrnames` and `blocks` run one part each; no argument runs all four. The
+  names include pairs that set one candidate order against another: a
+  shorter name greater in bytes, a capital that sorts the other way once
+  folded, and a precomposed letter that sorts the other way decomposed.
 
 ## What a run keeps
 

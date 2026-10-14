@@ -7,17 +7,20 @@
 #   attrs    an ordinary attribute at every size from 1 to 4,096 bytes and a
 #            symbolic link at every target length from 1 to 1,023 bytes, to
 #            show where each stops being held in its record
+#   attrnames  attributes named with 1, 10 and 120 bytes at every size from
+#            3,780 to 3,820 bytes, to show whether that size depends on the name
 #   blocks   opsutil.py's fixed tree copied by ditto into containers of 8, 16
 #            and 64 KiB blocks, to show a populated tree at each
 #
 # Each container is unmounted, mounted again and looked up by path, unmounted,
 # checked with fsck_apfs and dumped.
 #
-# Usage: records.sh OUTDIR [names] [attrs] [blocks]   (no argument: all three)
+# Usage: records.sh OUTDIR [names] [attrs] [attrnames] [blocks]
+#        (no argument: all four)
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift
-PARTS=${*:-names attrs blocks}
+PARTS=${*:-names attrs attrnames blocks}
 
 section env
 step sw_vers 30 sw_vers
@@ -58,6 +61,10 @@ make_attrs() {
     sstep "$1-attrs" 900 "$PY" "$HERE/recordsutil.py" attrs "$2" "$OUT/$1.json"
 }
 
+make_attrnames() {
+    sstep "$1-attrnames" 300 "$PY" "$HERE/recordsutil.py" attrnames "$2" "$OUT/$1.json"
+}
+
 copy_tree() {
     sstep "$1-copy" 300 ditto "$WORK/src" "$2/src"
 }
@@ -72,6 +79,10 @@ for part in $PARTS; do
     attrs)
         section attrs
         populate attrs 256m make_attrs
+        ;;
+    attrnames)
+        section attrnames
+        populate attrnames 64m make_attrnames
         ;;
     blocks)
         section blocks

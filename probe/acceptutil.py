@@ -17,7 +17,8 @@ OUT is the probe's output directory.
 `select` prints the names of the containers WORDS asks for: `few`, those of
 at most five volumes; `many`, those of more; `controls`, the containers
 `newfs_apfs` formats on the runner beside them; `limits`, those whose names
-begin `limit-`; or names. `verify` checks a
+begin `limit-`; `trees`, those whose first volume holds a tree, whose names
+begin `tree-`; or names. `verify` checks a
 dump against the digests images.json gives it. `control` records what a
 container `newfs_apfs` formatted should report, which is less than an image
 of accept/ states: its identifiers and times are the runner's.
@@ -40,9 +41,17 @@ container is accepted where every check passes:
 - the listing is the one images.json states;
 - every volume mounts read-only, `diskutil info` reports its name, its
   identifier, its kind of name and its block size, and its root directory's
-  owner, mode, flags and four times, with nothing in it, are as stated;
+  owner, mode, flags and four times are as stated. A volume images.json
+  states no entries of holds nothing else. A volume it states entries of
+  holds those and no others, each by path with its inode number, mode,
+  owner, group, flags and four times as stated; a file's link count, size
+  and content, a link's target, a device's number, a directory's names and
+  every entry's attributes by name, length and content as stated too.
+  What macOS reports of a directory's link count and size, and of a file's
+  blocks, is recorded beside the verdict and not held;
 - `apfs_checkseal -q -v` lists the entries images.json states, which for an
-  empty volume is none;
+  empty volume is none, and for each the owner, group, mode, flags, size,
+  allocation and attributes the writer recorded;
 - every volume mounts read-write and takes a file, and after it is
   unmounted, `fsck_apfs -n -W` exits 0 again;
 - mounted again, every volume reads the file back as written.
@@ -56,6 +65,7 @@ import json
 import os
 import platform
 import plistlib
+import re
 import struct
 import subprocess
 import sys
@@ -128,6 +138,8 @@ def select(acc, words):
             want += CONTROLS
         elif w == "limits":
             want += [n for n in names if n.startswith("limit-")]
+        elif w == "trees":
+            want += [n for n in names if n.startswith("tree-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:
@@ -325,7 +337,121 @@ def checkseal_entries(path):
         return [line.rstrip("\n") for line in f if line.startswith("/")]
 
 
-def volume_checks(image, out, name, k, problems):
+CHECKSEAL_FIELD = re.compile(
+    r"(uid/gid/mode|bsd_flags|internal_flags|file-size|alloced-size|def-prot-class|"
+    r"embedded data size|data-len|flags|[A-Za-z_-]+): (\S+)")
+
+
+def checkseal_fields(text):
+    """The `key: value` pairs between a checkseal line's braces."""
+    return {k: v for k, v in CHECKSEAL_FIELD.findall(text)}
+
+
+def checkseal_parsed(lines):
+    """Each entry line's fields by its path's bytes in hex, and each attribute
+    line's by its path's and name's."""
+    entries, xattrs = {}, {}
+    for line in lines:
+        head, brace, rest = line.rpartition(" {")
+        if not brace:
+            continue
+        fields = checkseal_fields(rest.rstrip("}"))
+        path, sep, name = head.partition(" :: ")
+        if sep:
+            xattrs[(path.encode().hex(), name.encode().hex())] = fields
+        else:
+            entries[path.encode().hex()] = fields
+    return entries, xattrs
+
+
+def compare_checkseal(tag, lines, stated, problems):
+    """Hold what `apfs_checkseal -q -v` lists to what the writer recorded."""
+    found, found_xattrs = checkseal_parsed(lines)
+    want = {e["path_hex"]: e for e in stated}
+    missing = sorted(set(want) - set(found))
+    extra = sorted(set(found) - set(want))
+    if missing:
+        problems.append("%s: apfs_checkseal lists %d stated entries not, the first %s"
+                        % (tag, len(missing), missing[0]))
+    if extra:
+        problems.append("%s: apfs_checkseal lists %d entries not stated, the first %s"
+                        % (tag, len(extra), extra[0]))
+    wrong = []
+    for path in sorted(set(want) & set(found)):
+        w, f = want[path], found[path]
+        held = {"uid/gid/mode": "%d/%d/%#x" % (w["uid"], w["gid"], w["mode"]),
+                "bsd_flags": "%#x" % w["bsd_flags"],
+                "internal_flags": "%#x" % w["internal_flags"]}
+        if "file_size" in w:
+            held["file-size"] = str(w["file_size"])
+            held["alloced-size"] = str(w["alloced_size"])
+        for k, v in held.items():
+            if f.get(k) != v:
+                wrong.append("%s %s %s, stated %s" % (path, k, f.get(k), v))
+        for x in w["xattrs"]:
+            got = found_xattrs.get((path, x["name_hex"]))
+            if got is None:
+                wrong.append("%s attribute %s not listed" % (path, x["name_hex"]))
+                continue
+            if got.get("flags") != "%#x" % x["flags"]:
+                wrong.append("%s attribute %s flags %s, stated %#x"
+                             % (path, x["name_hex"], got.get("flags"), x["flags"]))
+            if "data_len" in x and got.get("data-len") != str(x["data_len"]):
+                wrong.append("%s attribute %s data-len %s, stated %d"
+                             % (path, x["name_hex"], got.get("data-len"), x["data_len"]))
+    if wrong:
+        problems.append("%s: apfs_checkseal differs in %d places, the first %s"
+                        % (tag, len(wrong), "; ".join(wrong[:3])))
+
+
+# The fields every entry of a manifest is held to, and those held only where
+# images.json states them.
+HELD = ("ino", "mode", "uid", "gid", "flags", "atime_ns", "mtime_ns", "ctime_ns", "birthtime_ns")
+HELD_WHERE_STATED = ("nlink", "size", "rdev", "sha256", "read_len", "target_hex")
+
+
+def compare_entries(tag, found, stated, problems, observed):
+    """Hold a mounted volume's manifest to the entries images.json states."""
+    have = {e["path_hex"]: e for e in found}
+    want = {e["path_hex"]: e for e in stated}
+    missing = sorted(set(want) - set(have))
+    extra = sorted(set(have) - set(want))
+    if missing:
+        problems.append("%s: %d stated entries are missing, the first %s"
+                        % (tag, len(missing), missing[0]))
+    if extra:
+        problems.append("%s: %d entries are not stated, the first %s"
+                        % (tag, len(extra), extra[0]))
+    wrong, by_field = [], {}
+    for path in sorted(set(want) & set(have)):
+        w, f = want[path], have[path]
+        fields = list(HELD) + [k for k in HELD_WHERE_STATED if k in w]
+        for k in fields:
+            if f.get(k) != w[k]:
+                by_field[k] = by_field.get(k, 0) + 1
+                wrong.append("%s %s %s, stated %s" % (path, k, f.get(k), w[k]))
+        if "children_hex" in w and sorted(f.get("children_hex") or []) != sorted(w["children_hex"]):
+            by_field["children_hex"] = by_field.get("children_hex", 0) + 1
+            wrong.append("%s children differ" % path)
+        if f.get("xattrs") is not None:
+            got = sorted((x["name_hex"], x["len"], x["sha256"]) for x in f["xattrs"])
+            exp = sorted((x["name_hex"], x["len"], x["sha256"]) for x in w["xattrs"])
+            if got != exp:
+                by_field["xattrs"] = by_field.get("xattrs", 0) + 1
+                wrong.append("%s attributes %s, stated %s" % (path, got, exp))
+        # What is recorded and not held: a directory's link count and size, a file's blocks.
+        kind = "dir" if "children_hex" in w else ("file" if "sha256" in w else "other")
+        for k in ("nlink", "size", "blocks"):
+            if k in f and k not in w:
+                observed.setdefault("%s %s" % (kind, k), []).append(
+                    [path, f[k], len(w.get("children_hex", []))])
+    if wrong:
+        problems.append("%s: %d fields differ (%s), the first %s"
+                        % (tag, len(wrong), ", ".join("%s %d" % kv for kv in sorted(by_field.items())),
+                           "; ".join(wrong[:3])))
+
+
+def volume_checks(image, out, name, k, problems, observed):
     """The read-only pass's checks of the K-th volume listed; returns its slot."""
     p = "%s-ro-v%d" % (name, k)
     status = steps(out)
@@ -366,12 +492,15 @@ def volume_checks(image, out, name, k, problems):
             problems.append("%s: listing errors %s" % (tag, entries["errors"]))
         root = next((e for e in entries["entries"] if e["path_hex"] == ""), None)
         others = [e["path_hex"] for e in entries["entries"] if e["path_hex"] != ""]
+        if want.get("entries") is not None:
+            compare_entries(tag, entries["entries"], want["entries"], problems,
+                            observed.setdefault(str(slot), {}))
         if root is None:
             problems.append("%s: no root directory" % tag)
         else:
-            if root.get("children_hex"):
+            if want.get("entries") is None and root.get("children_hex"):
                 problems.append("%s: root holds %s" % (tag, root["children_hex"]))
-            if others:
+            if want.get("entries") is None and others:
                 problems.append("%s: entries %s" % (tag, others))
             stated_root = want["root"]
             if stated_root is not None:
@@ -383,6 +512,8 @@ def volume_checks(image, out, name, k, problems):
     listed = checkseal_entries(os.path.join(out, "log", p + "-checkseal.out"))
     if listed is None:
         problems.append("%s: apfs_checkseal did not run" % tag)
+    elif want.get("checkseal") is not None:
+        compare_checkseal(tag, listed, want["checkseal"], problems)
     elif listed:
         problems.append("%s: apfs_checkseal lists %d entries, stated none" % (tag, len(listed)))
     return slot
@@ -431,7 +562,8 @@ def verdict(acc, out, name):
         listed = {"devices": [], "problems": ["no listing"], "accounting": {}}
     problems += ["listing: " + p for p in listed["problems"]]
     n = len(listed["devices"])
-    slots = [volume_checks(image, out, name, k, problems) for k in range(1, n + 1)]
+    observed = {}
+    slots = [volume_checks(image, out, name, k, problems, observed) for k in range(1, n + 1)]
     for k in range(1, n + 1):
         p = "%s-rw-v%d" % (name, k)
         if status.get(p + "-mount") != 0:
@@ -453,6 +585,7 @@ def verdict(acc, out, name):
         "problems": problems,
         "slots_listed": slots,
         "accounting": listed.get("accounting", {}),
+        "observed": observed,
     }
     result["fsck_warnings"] = {k: fsck_warnings(out, name + k)[0] for k in ("-fsck", "-fsck-written")}
     result["as_expected"] = (result["verdict"] == "accepted") == (

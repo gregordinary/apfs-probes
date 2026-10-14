@@ -185,11 +185,17 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 45 empty containers that ferrosys's APFS writer
+  formats. `accept/` holds 53 containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
-  owner, mode, flags and times. They cover every block size, every release
+  owner, mode, flags and times. Forty-five are empty. In the eight named
+  `tree-` the first volume holds a generated tree: directories, files from
+  empty to past a mebibyte, symbolic links, hard links, device nodes, pipes,
+  sockets, attributes either side of 3,800 bytes, resource forks, names past
+  ASCII, owners and times before 1970. For each, `images.json` states every
+  entry as the mounted volume's manifest describes one, and what
+  `apfs_checkseal -q -v` lists of it. They cover every block size, every release
   profile, sizes from the smallest to 16 TiB, one to a hundred volumes and
   both kinds of name. Twenty-five are to be accepted, and a twenty-sixth
   too but for `fsck_apfs -W`'s warning that its times are later than the
@@ -211,8 +217,14 @@ A probe that takes arguments gets them from the `args` input:
   a fault of the check. `verdicts.json` gives each container's verdict beside
   what was expected of it, with the release. The argument `few` runs the
   containers of at most five volumes and `many` the one of a hundred;
-  `controls` runs the three `newfs_apfs` containers, and `limits` the
-  seventeen that set a node limit.
+  `controls` runs the three `newfs_apfs` containers, `limits` the
+  seventeen that set a node limit, and `trees` the eight that hold a tree.
+  Of a volume holding a tree, every entry is held by path to what is stated:
+  its inode number, mode, owner, group, flags and four times; a file's link
+  count, size and content, a link's target, a device's number, a
+  directory's names, and every entry's attributes; and `apfs_checkseal`'s
+  line for it. What macOS reports of a directory's link count and size, and
+  of a file's blocks, is recorded beside the verdict.
 
 - `resize`: what a container records once `diskutil apfs resizeContainer`
   has resized it. Two sparse 64 GiB images are partitioned by `diskutil

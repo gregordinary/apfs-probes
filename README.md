@@ -211,7 +211,17 @@ A probe that takes arguments gets them from the `args` input:
   a fault of the check. `verdicts.json` gives each container's verdict beside
   what was expected of it, with the release. The argument `few` runs the
   containers of at most five volumes and `many` the one of a hundred;
-  `controls` runs the three `newfs_apfs` containers.
+  `controls` runs the three `newfs_apfs` containers, and `limits` the
+  seventeen that set a node limit.
+
+- `resize`: what a container records once `diskutil apfs resizeContainer`
+  has resized it. Two sparse 64 GiB images are partitioned by `diskutil
+  partitionDisk`. One holds a 2 GiB APFS partition with the rest of the disk
+  free, and its container is shrunk to 1 GiB and then grown to the end of
+  the disk; the other's partition covers the disk, and its container is
+  shrunk to 2 GiB. After each step the volume is mounted read-write and
+  given a file, `fsck_apfs -n` checks the partition, `diskutil info`
+  records where it begins, and the whole image is dumped.
 
 ## What a run keeps
 

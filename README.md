@@ -255,6 +255,15 @@ A probe that takes arguments gets them from the `args` input:
   names include pairs that set one candidate order against another: a
   shorter name greater in bytes, a capital that sorts the other way once
   folded, and a precomposed letter that sorts the other way decomposed.
+- `ramdisk`: what macOS reads of Apple's restore RAM disk, the container
+  the macOS 26.6.2 restore image carries. The runner fetches that one member
+  of the restore image from Apple's CDN by range requests
+  (`apple-ramdisk.py`), holds it and the container inside it to their
+  sha256, attaches the container read-only, and records every entry as the
+  `corpus` probe records a volume's: names, modes, owners, flags, four
+  times, sizes, link targets, each attribute's name, length and digest, a
+  compressed file's type, and each file's digest. The container is deleted
+  on the runner, and no byte of it is kept.
 
 ## What a run keeps
 

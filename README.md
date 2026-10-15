@@ -198,7 +198,10 @@ A probe that takes arguments gets them from the `args` input:
   back by ferrosys and written again with paths removed, replaced, hidden and
   added: the files and attributes the probe wrote, its compressed files
   passed through as macOS stored them, and nothing macOS wrote there on its
-  own. For each populated container, `images.json` states every
+  own. Among those files is the probe's character device numbered 0,0, of
+  which `fsck_apfs -W` warns on the containers macOS wrote as well, so a
+  container may draw that warning once for each device node it is stated to
+  hold numbered zero, and nothing besides. For each populated container, `images.json` states every
   entry as the mounted volume's manifest describes one, and what
   `apfs_checkseal -q -v` lists of it. They cover every block size, every release
   profile, sizes from the smallest to 16 TiB, one to a hundred volumes and

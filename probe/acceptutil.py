@@ -36,9 +36,11 @@ again.
 `verdict` gathers one container's steps into verdicts/NAME.json. A
 container is accepted where every check passes:
 
-- `fsck_apfs -n -W` exits 0 on the container as sent, or, for a container
-  images.json expects to warn that its time is later than the runner's
-  clock, warns of that alone;
+- `fsck_apfs -n -W` exits 0 on the container as sent, or warns only of what
+  images.json says it holds: that its time is later than the runner's clock,
+  for a container expected to warn of that, and that a device node's number
+  is zero, once for each device node it states numbered zero, which
+  `fsck_apfs` warns of on the containers macOS writes too;
 - the listing is the one images.json states;
 - every volume mounts read-only, `diskutil info` reports its name, its
   identifier, its kind of name and its block size, and its root directory's
@@ -54,7 +56,7 @@ container is accepted where every check passes:
   empty volume is none, and for each the owner, group, mode, flags, size,
   allocation and attributes the writer recorded;
 - every volume mounts read-write and takes a file, and after it is
-  unmounted, `fsck_apfs -n -W` exits 0 again;
+  unmounted, `fsck_apfs -n -W` passes again as above;
 - mounted again, every volume reads the file back as written.
 
 `index` writes verdicts.json: the release, and each container's verdict
@@ -67,6 +69,7 @@ import os
 import platform
 import plistlib
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -332,13 +335,23 @@ def read(mnt, name, key, out):
 # -- the verdict --------------------------------------------------------------
 
 def checkseal_entries(path):
-    """The entries `apfs_checkseal -q -v` lists: every line that names a
-    path, which it begins with."""
+    """The entries `apfs_checkseal -q -v` lists. Each begins a line with its
+    path and ends with its fields in braces; a name is printed as it is, so
+    one holding a line feed carries its entry onto the lines after."""
     if not os.path.exists(path):
         return None
+    entries = []
     with open(path, encoding="utf-8", errors="replace") as f:
-        return [line.rstrip("\n") for line in f if line.startswith("/")]
+        for line in f:
+            line = line.rstrip("\n")
+            if line.startswith("/"):
+                entries.append(line)
+            elif entries and not CHECKSEAL_END.search(entries[-1]):
+                entries[-1] += "\n" + line
+    return entries
 
+
+CHECKSEAL_END = re.compile(r" \{[^{}]*\}$")
 
 CHECKSEAL_FIELD = re.compile(
     r"(uid/gid/mode|bsd_flags|internal_flags|file-size|alloced-size|def-prot-class|"
@@ -555,18 +568,33 @@ def fsck_warnings(out, step):
     return lines, failures
 
 
+ZERO_DEVICE = re.compile(r"warning: inode \(id (\d+)\): .*found zero rdev on char/block device")
+
+
+def zero_devices(image):
+    """The inode numbers of the device nodes images.json states numbered zero."""
+    return sorted({e["ino"] for v in image.get("volumes", []) for e in v.get("entries") or []
+                   if (stat.S_ISCHR(e["mode"]) or stat.S_ISBLK(e["mode"])) and e.get("rdev") == 0})
+
+
 def fsck_passes(image, out, step, status):
-    """Whether fsck_apfs -n -W passed STEP, with the warnings an image whose
-    time is later than the runner's clock is expected to draw: that a volume
-    superblock's time is greater than the current time, and nothing else."""
+    """Whether fsck_apfs -n -W passed STEP: it exits 0, or it exits 8 on the
+    warnings the image is expected to draw and no others. Those are that a
+    volume superblock's time is greater than the current time, for an image
+    expected to warn of that, and that a device node's number is zero, once
+    for each device node the image states numbered zero, by its inode, each
+    of which -W counts as a failure."""
     rc = status.get(step)
     if rc == 0:
         return True
-    if image["expect"] != "warn-future-time" or rc != 8:
-        return False
     warnings, failures = fsck_warnings(out, step)
-    return failures == 0 and bool(warnings) and all(
-        "is greater than current time" in w for w in warnings)
+    if rc != 8 or not warnings:
+        return False
+    zero = sorted(int(m.group(1)) for m in map(ZERO_DEVICE.match, warnings) if m)
+    late = [w for w in warnings if "is greater than current time" in w]
+    return (len(zero) + len(late) == len(warnings)
+            and zero == zero_devices(image) and failures == len(zero)
+            and bool(late) == (image["expect"] == "warn-future-time"))
 
 
 def verdict(acc, out, name):

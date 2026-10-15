@@ -185,7 +185,7 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 53 containers that ferrosys's APFS writer
+  formats. `accept/` holds 57 containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
@@ -193,7 +193,12 @@ A probe that takes arguments gets them from the `args` input:
   `tree-` the first volume holds a generated tree: directories, files from
   empty to past a mebibyte, symbolic links, hard links, device nodes, pipes,
   sockets, attributes either side of 3,800 bytes, resource forks, names past
-  ASCII, owners and times before 1970. For each, `images.json` states every
+  ASCII, owners and times before 1970. In the four named `corpus-` it holds
+  a volume of the `corpus` probe's containers (the `corpus-1` release), read
+  back by ferrosys and written again with paths removed, replaced, hidden and
+  added: the files and attributes the probe wrote, its compressed files
+  passed through as macOS stored them, and nothing macOS wrote there on its
+  own. For each populated container, `images.json` states every
   entry as the mounted volume's manifest describes one, and what
   `apfs_checkseal -q -v` lists of it. They cover every block size, every release
   profile, sizes from the smallest to 16 TiB, one to a hundred volumes and
@@ -218,8 +223,9 @@ A probe that takes arguments gets them from the `args` input:
   what was expected of it, with the release. The argument `few` runs the
   containers of at most five volumes and `many` the one of a hundred;
   `controls` runs the three `newfs_apfs` containers, `limits` the
-  seventeen that set a node limit, and `trees` the eight that hold a tree.
-  Of a volume holding a tree, every entry is held by path to what is stated:
+  seventeen that set a node limit, `trees` the eight that hold a tree, and
+  `corpus` the four that hold a corpus volume. Of a populated volume, every
+  entry is held by path to what is stated:
   its inode number, mode, owner, group, flags and four times; a file's link
   count, size and content, a link's target, a device's number, a
   directory's names, and every entry's attributes, a resource fork among a

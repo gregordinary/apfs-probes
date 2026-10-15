@@ -18,7 +18,8 @@ OUT is the probe's output directory.
 at most five volumes; `many`, those of more; `controls`, the containers
 `newfs_apfs` formats on the runner beside them; `limits`, those whose names
 begin `limit-`; `trees`, those whose first volume holds a tree, whose names
-begin `tree-`; or names. `verify` checks a
+begin `tree-`; `corpus`, those whose first volume holds a corpus volume,
+whose names begin `corpus-`; or names. `verify` checks a
 dump against the digests images.json gives it. `control` records what a
 container `newfs_apfs` formatted should report, which is less than an image
 of accept/ states: its identifiers and times are the runner's.
@@ -140,6 +141,8 @@ def select(acc, words):
             want += [n for n in names if n.startswith("limit-")]
         elif w == "trees":
             want += [n for n in names if n.startswith("tree-")]
+        elif w == "corpus":
+            want += [n for n in names if n.startswith("corpus-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:

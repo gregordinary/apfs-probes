@@ -204,9 +204,11 @@ A probe that takes arguments gets them from the `args` input:
   hold numbered zero, and nothing besides. In the three named `fit-` the
   first volume holds a generated tree as well, and the container is the
   size ferrosys finds for it: `fit-ramdisk`, one case-sensitive volume with
-  no room asked for, records no block free and is expected to be full;
-  `fit-v2` is two volumes at the smallest size with a slot for each; and
-  `fit-slack` is sized asking for a fifth of it free. For each populated
+  no room asked for, records no block free and is full; `fit-v2` is two
+  volumes at the smallest size with a slot for each; and `fit-slack` is
+  sized asking for a fifth of it free, 231 of 1,152 blocks, and is full as
+  well, since macOS refuses a change where fewer blocks are free than it
+  sets aside for one. For each populated
   container, `images.json` states every
   entry as the mounted volume's manifest describes one, and what
   `apfs_checkseal -q -v` lists of it. They cover every block size, every release
@@ -225,7 +227,7 @@ A probe that takes arguments gets them from the `args` input:
   characters within them; every volume mounted read-only, described by
   `diskutil info`, its entries recorded and listed again by `apfs_checkseal
   -q -v`; every volume mounted read-write and given a file, which a
-  container expected to be full refuses for want of room (`ENOSPC`), to
+  container stated full refuses for want of room (`ENOSPC`), to
   hold no file or the start of the one written when it is mounted again;
   `fsck_apfs -n -W` again, and
   the image dumped as macOS left it; and every volume mounted once more and

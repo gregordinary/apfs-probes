@@ -483672,7 +483672,7 @@
    "content_sha256": "411c38f839b9ad1640fb4699b40d30850b7dd0b636a676cf7b881fdaa794fa80",
    "digest": "cf9437096931e168",
    "dump": "fit-slack.bd",
-   "expect": "accept",
+   "expect": "full",
    "free_blocks": 231,
    "name": "fit-slack",
    "nonzero_blocks": 855,

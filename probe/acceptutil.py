@@ -62,10 +62,11 @@ container is accepted where every check passes:
   unmounted, `fsck_apfs -n -W` passes again as above;
 - mounted again, every volume reads the file back as written.
 
-A container images.json expects to be `full` records no block free, and is
-held to the same checks but the file: every volume mounts read-write and
-refuses it for want of room (ENOSPC), and mounted again holds no file, or a
-file that begins the content written.
+A container images.json expects to be `full` is one macOS finds too little
+room in to take the file: one with no block free, or with fewer than macOS
+sets aside before a change. It is held to the same checks but the file:
+every volume mounts read-write and refuses it for want of room (ENOSPC), and
+mounted again holds no file, or a file that begins the content written.
 
 `index` writes verdicts.json: the release, and each container's verdict
 beside what images.json expects of it.
@@ -656,7 +657,7 @@ def verdict(acc, out, name):
             if took is None:
                 problems.append("%s: no record of the write" % p)
             elif took["written"]:
-                problems.append("%s: the file was written, with no block stated free" % p)
+                problems.append("%s: the file was written, to a container stated full" % p)
             elif took.get("errno") != "ENOSPC":
                 problems.append("%s: the %s failed otherwise than for want of room: %s"
                                 % (p, took.get("stage"), took.get("error")))

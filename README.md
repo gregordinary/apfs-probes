@@ -185,7 +185,7 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 57 containers that ferrosys's APFS writer
+  formats. `accept/` holds 60 containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
@@ -201,7 +201,13 @@ A probe that takes arguments gets them from the `args` input:
   own. Among those files is the probe's character device numbered 0,0, of
   which `fsck_apfs -W` warns on the containers macOS wrote as well, so a
   container may draw that warning once for each device node it is stated to
-  hold numbered zero, and nothing besides. For each populated container, `images.json` states every
+  hold numbered zero, and nothing besides. In the three named `fit-` the
+  first volume holds a generated tree as well, and the container is the
+  size ferrosys finds for it: `fit-ramdisk`, one case-sensitive volume with
+  no room asked for, records no block free and is expected to be full;
+  `fit-v2` is two volumes at the smallest size with a slot for each; and
+  `fit-slack` is sized asking for a fifth of it free. For each populated
+  container, `images.json` states every
   entry as the mounted volume's manifest describes one, and what
   `apfs_checkseal -q -v` lists of it. They cover every block size, every release
   profile, sizes from the smallest to 16 TiB, one to a hundred volumes and
@@ -218,7 +224,10 @@ A probe that takes arguments gets them from the `args` input:
   stated, which gives a name of more than 127 bytes as its leading whole
   characters within them; every volume mounted read-only, described by
   `diskutil info`, its entries recorded and listed again by `apfs_checkseal
-  -q -v`; every volume mounted read-write and given a file; `fsck_apfs -n -W` again, and
+  -q -v`; every volume mounted read-write and given a file, which a
+  container expected to be full refuses for want of room (`ENOSPC`), to
+  hold no file or the start of the one written when it is mounted again;
+  `fsck_apfs -n -W` again, and
   the image dumped as macOS left it; and every volume mounted once more and
   the file read back. Three containers `newfs_apfs` formats on the runner go
   through the same batch, so a check that fails on Apple's own container is
@@ -226,8 +235,9 @@ A probe that takes arguments gets them from the `args` input:
   what was expected of it, with the release. The argument `few` runs the
   containers of at most five volumes and `many` the one of a hundred;
   `controls` runs the three `newfs_apfs` containers, `limits` the
-  seventeen that set a node limit, `trees` the eight that hold a tree, and
-  `corpus` the four that hold a corpus volume. Of a populated volume, every
+  seventeen that set a node limit, `trees` the eight that hold a tree,
+  `corpus` the four that hold a corpus volume, and `fit` the three sized to
+  their tree. Of a populated volume, every
   entry is held by path to what is stated:
   its inode number, mode, owner, group, flags and four times; a file's link
   count, size and content, a link's target, a device's number, a

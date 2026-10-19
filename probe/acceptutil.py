@@ -19,7 +19,8 @@ at most five volumes; `many`, those of more; `controls`, the containers
 `newfs_apfs` formats on the runner beside them; `limits`, those whose names
 begin `limit-`; `trees`, those whose first volume holds a tree, whose names
 begin `tree-`; `corpus`, those whose first volume holds a corpus volume,
-whose names begin `corpus-`; or names. `verify` checks a
+whose names begin `corpus-`; `fit`, those sized to the tree they hold,
+whose names begin `fit-`; or names. `verify` checks a
 dump against the digests images.json gives it. `control` records what a
 container `newfs_apfs` formatted should report, which is less than an image
 of accept/ states: its identifiers and times are the runner's.
@@ -30,8 +31,10 @@ by its identifier, with its name and no role. A name longer than 127 bytes
 is listed shortened, which is held to the rule `listed_short` states. It prints each volume's
 device, in the order listed, for the probe to mount. `write` writes a file
 to a volume mounted read-write, its content named by the container and the
-volume's identifier, and `read` reads it back after the volume is mounted
-again.
+volume's identifier, and records how many bytes it took and, where it
+stopped, at which call and with which error. `read` reads it back after the
+volume is mounted again, and records whether it is there and whether what is
+there begins the content written.
 
 `verdict` gathers one container's steps into verdicts/NAME.json. A
 container is accepted where every check passes:
@@ -59,10 +62,16 @@ container is accepted where every check passes:
   unmounted, `fsck_apfs -n -W` passes again as above;
 - mounted again, every volume reads the file back as written.
 
+A container images.json expects to be `full` records no block free, and is
+held to the same checks but the file: every volume mounts read-write and
+refuses it for want of room (ENOSPC), and mounted again holds no file, or a
+file that begins the content written.
+
 `index` writes verdicts.json: the release, and each container's verdict
 beside what images.json expects of it.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -146,6 +155,8 @@ def select(acc, words):
             want += [n for n in names if n.startswith("tree-")]
         elif w == "corpus":
             want += [n for n in names if n.startswith("corpus-")]
+        elif w == "fit":
+            want += [n for n in names if n.startswith("fit-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:
@@ -298,17 +309,30 @@ def content(name, key):
 
 def write(mnt, name, key, out):
     data = content(name, key)
-    result = {"path": FILE, "len": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    result = {"path": FILE, "len": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+              "taken": 0}
+    stage = "open"
     try:
         fd = os.open(os.path.join(mnt, FILE), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         try:
-            os.write(fd, data)
+            stage = "write"
+            while result["taken"] < len(data):
+                n = os.write(fd, data[result["taken"]:])
+                if n == 0:
+                    break
+                result["taken"] += n
+            stage = "fsync"
             os.fsync(fd)
         finally:
             os.close(fd)
-        result["written"] = True
+        result["written"] = result["taken"] == len(data)
+        if not result["written"]:
+            result["stage"] = "write"
+            result["error"] = "a write took no bytes after %d" % result["taken"]
     except OSError as e:
         result["written"] = False
+        result["stage"] = stage
+        result["errno"] = errno.errorcode.get(e.errno, e.errno)
         result["error"] = str(e)
     write_json(out, result)
     if not result["written"]:
@@ -316,16 +340,19 @@ def write(mnt, name, key, out):
 
 
 def read(mnt, name, key, out):
-    want = hashlib.sha256(content(name, key)).hexdigest()
-    result = {"path": FILE, "sha256_stated": want}
+    written = content(name, key)
+    want = hashlib.sha256(written).hexdigest()
+    result = {"path": FILE, "sha256_stated": want, "absent": False}
     try:
         with open(os.path.join(mnt, FILE), "rb") as f:
             data = f.read()
         result["sha256"] = hashlib.sha256(data).hexdigest()
         result["len"] = len(data)
         result["same"] = result["sha256"] == want
+        result["prefix"] = written.startswith(data)
     except OSError as e:
         result["same"] = False
+        result["absent"] = e.errno == errno.ENOENT
         result["error"] = str(e)
     write_json(out, result)
     if not result["same"]:
@@ -597,6 +624,14 @@ def fsck_passes(image, out, step, status):
             and bool(late) == (image["expect"] == "warn-future-time"))
 
 
+def record(out, step):
+    """What `write` or `read` recorded in STEP, or None where it did not run."""
+    try:
+        return read_json(os.path.join(out, "files", step + ".json"))
+    except OSError:
+        return None
+
+
 def verdict(acc, out, name):
     image = stated(acc, out, name)
     status = steps(out)
@@ -610,16 +645,34 @@ def verdict(acc, out, name):
     problems += ["listing: " + p for p in listed["problems"]]
     n = len(listed["devices"])
     observed = {}
+    full = image["expect"] == "full"
     slots = [volume_checks(image, out, name, k, problems, observed) for k in range(1, n + 1)]
     for k in range(1, n + 1):
         p = "%s-rw-v%d" % (name, k)
         if status.get(p + "-mount") != 0:
             problems.append("%s: the read-write mount failed" % p)
+        elif full:
+            took = record(out, p)
+            if took is None:
+                problems.append("%s: no record of the write" % p)
+            elif took["written"]:
+                problems.append("%s: the file was written, with no block stated free" % p)
+            elif took.get("errno") != "ENOSPC":
+                problems.append("%s: the %s failed otherwise than for want of room: %s"
+                                % (p, took.get("stage"), took.get("error")))
         elif status.get(p + "-write") != 0:
             problems.append("%s: the file was not written" % p)
         r = "%s-back-v%d" % (name, k)
         if status.get(r + "-mount") != 0:
             problems.append("%s: the mount after the write failed" % r)
+        elif full:
+            back = record(out, r)
+            if back is None:
+                problems.append("%s: no record of the read" % r)
+            elif not back["absent"] and "error" in back:
+                problems.append("%s: the file did not read: %s" % (r, back["error"]))
+            elif not (back["absent"] or back["prefix"]):
+                problems.append("%s: the file holds what was not written" % r)
         elif status.get(r + "-read") != 0:
             problems.append("%s: the file did not read back" % r)
     if not fsck_passes(image, out, name + "-fsck-written", status):
@@ -636,7 +689,7 @@ def verdict(acc, out, name):
     }
     result["fsck_warnings"] = {k: fsck_warnings(out, name + k)[0] for k in ("-fsck", "-fsck-written")}
     result["as_expected"] = (result["verdict"] == "accepted") == (
-        image["expect"] in ("accept", "warn-future-time"))
+        image["expect"] in ("accept", "warn-future-time", "full"))
     write_json(os.path.join(out, "verdicts", name + ".json"), result)
     print(json.dumps({"verdict": result["verdict"], "as_expected": result["as_expected"],
                       "problems": len(problems)}))

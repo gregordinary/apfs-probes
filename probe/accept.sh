@@ -15,7 +15,8 @@
 #           apfs_checkseal -q -v
 #   rw      attached again, every volume mounted read-write, a file written to
 #           it and synced, and the volume unmounted; then fsck_apfs -n -W again
-#           and the image dumped as macOS left it
+#           and the image dumped as macOS left it. A container images.json
+#           expects to be full is to refuse the file for want of room
 #   back    attached again, every volume mounted read-only and the file read
 #           back
 #
@@ -23,11 +24,11 @@
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
 # kernel's APFS messages during the run are kept in system-log.ndjson.
 #
-# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | NAME...]
+# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | NAME...]
 #   with no argument, every container; few, those of at most five volumes;
 #   many, those of more; controls, the newfs_apfs containers; limits, those
 #   whose names begin limit-; trees, those whose names begin tree-; corpus,
-#   those whose names begin corpus-
+#   those whose names begin corpus-; fit, those whose names begin fit-
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift

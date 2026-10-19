@@ -286,7 +286,7 @@ A probe that takes arguments gets them from the `args` input:
   compressed file's type, and each file's digest. The container is deleted
   on the runner, and no byte of it is kept.
 - `reserve`: how much of a container's free space macOS writes into.
-  `reserve/` holds 34 containers that ferrosys's APFS writer formatted, each
+  `reserve/` holds 41 containers that ferrosys's APFS writer formatted, each
   around one file of zeros and sized to leave a stated count of blocks
   free, 300 or 2,500: every block size, containers from about a thousand
   blocks to two million, and two of two volumes. A zero block is left out of
@@ -310,9 +310,10 @@ A probe that takes arguments gets them from the `args` input:
   length to 300 bytes and longer, of characters of two to four bytes to
   either side of 127 bytes, and of the `security.`, `trusted.`, `user.`
   and `system.posix_acl_` namespaces, each read back, listed and removed.
-  `xattrnames/` holds two containers ferrosys's APFS writer formatted with
-  attributes named up to the longest it holds at 4 and 64 KiB blocks, and
-  with attributes of those namespaces, among them two POSIX ACLs. Each is
+  `xattrnames/` holds three containers ferrosys's APFS writer formatted:
+  two with attributes named up to the longest it holds at 4 and 64 KiB
+  blocks, and one with names of 127 bytes at most; each with attributes of
+  those namespaces, among them two POSIX ACLs. Each is
   checked by `fsck_apfs -n -W`, its volume mounted read-only, listed, read
   and listed by `apfs_checkseal -q -v`; mounted read-write, an attribute set
   on every file and each one it holds set again; then checked and listed

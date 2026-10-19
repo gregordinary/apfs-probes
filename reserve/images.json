@@ -1,0 +1,815 @@
+{
+ "images": [
+  {
+   "block_size": 4096,
+   "blocks": 1093,
+   "bytes": 4476928,
+   "container_uuid": "58304A14-3134-4B8E-8921-29D6356A7422",
+   "content_blocks": 700,
+   "content_sha256": "4e671893f0784cb7305d827aad29dfe032cc9cc0363de9ddf97f331208997bb2",
+   "digest": "b08d2c581780de30",
+   "dump": "r-b4k-c700-k300.bd",
+   "free": 300,
+   "name": "r-b4k-c700-k300",
+   "nonzero_blocks": 27,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "BE2071C2-2555-410F-8A35-B1341ACD90E1"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 3293,
+   "bytes": 13488128,
+   "container_uuid": "1E0A5774-D3A4-415E-8412-B2C7FD5A63D2",
+   "content_blocks": 700,
+   "content_sha256": "2fcb7dbfa64b4e2b7a7c4ddfd0c61f0eec8d106fefdfff6ab081c77b94d2da39",
+   "digest": "c09d9e61689547b3",
+   "dump": "r-b4k-c700-k2500.bd",
+   "free": 2500,
+   "name": "r-b4k-c700-k2500",
+   "nonzero_blocks": 27,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "E79B3A7F-257C-4B67-A345-86BFC8FE2777"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 16501,
+   "bytes": 67588096,
+   "container_uuid": "66FDEF26-B5D5-4C50-88E9-FB91E2EC54F6",
+   "content_blocks": 16000,
+   "content_sha256": "c07b8c17b90a576b363abd41b71b59646ceeb8a3841b0adad592143985419c5f",
+   "digest": "bb0b729496065dc4",
+   "dump": "r-b4k-c16000-k300.bd",
+   "free": 300,
+   "name": "r-b4k-c16000-k300",
+   "nonzero_blocks": 27,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "A111DFC8-1797-4F64-AC39-1EA0BB7FD066"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 18737,
+   "bytes": 76746752,
+   "container_uuid": "97513145-C132-4C3B-9E7A-254A7A7C0200",
+   "content_blocks": 16000,
+   "content_sha256": "83ade250a229c05a009898f5bdb06596ca63671cc984f19ba7be2cf075c615c5",
+   "digest": "bce3c1cccecdc438",
+   "dump": "r-b4k-c16000-k2500.bd",
+   "free": 2500,
+   "name": "r-b4k-c16000-k2500",
+   "nonzero_blocks": 27,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "FA7A61B2-ED08-486C-A8D1-59A1FA0B3288"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 120730,
+   "bytes": 494510080,
+   "container_uuid": "A0BFE3CB-88CF-4039-9C24-C33F7EA259AF",
+   "content_blocks": 120000,
+   "content_sha256": "6e41b409f12d5a1332035714bd2224b619b7d8218f1d9b379f68090a0d320dd2",
+   "digest": "fed6331ce4b08712",
+   "dump": "r-b4k-c120000-k300.bd",
+   "free": 300,
+   "name": "r-b4k-c120000-k300",
+   "nonzero_blocks": 30,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "6B07805B-CE28-4E42-B14A-C6803BA27999"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 122934,
+   "bytes": 503537664,
+   "container_uuid": "9FDF1C84-8E64-4A9F-B416-E4710C160C93",
+   "content_blocks": 120000,
+   "content_sha256": "656b22b2379be7b3257d75c3e033aba42be3095b98683d103f47eada5e5e8699",
+   "digest": "076dd4fd2a6e37f2",
+   "dump": "r-b4k-c120000-k2500.bd",
+   "free": 2500,
+   "name": "r-b4k-c120000-k2500",
+   "nonzero_blocks": 30,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "7798B909-148F-4D23-98CD-3F5B87155FAD"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 2006744,
+   "bytes": 8219623424,
+   "container_uuid": "FBF3E274-DE92-46D4-B5E4-EE70A9940779",
+   "content_blocks": 2000000,
+   "content_sha256": "da7577ac1c71f57acbef50a783a1992bfc52c2a6695e721f3898b68d57eeb732",
+   "digest": "506ed148e0647dbc",
+   "dump": "r-b4k-c2000000-k300.bd",
+   "free": 300,
+   "name": "r-b4k-c2000000-k300",
+   "nonzero_blocks": 89,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "3946FF12-E350-4661-9F14-E936FBB7FA8A"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 2008944,
+   "bytes": 8228634624,
+   "container_uuid": "2CD51690-EE5B-4818-8274-22C3B08D2491",
+   "content_blocks": 2000000,
+   "content_sha256": "dd51aca8c875e4183c85f152f917a429ea914b58cc35e471112e57e848a3391c",
+   "digest": "c534edf44ac57234",
+   "dump": "r-b4k-c2000000-k2500.bd",
+   "free": 2500,
+   "name": "r-b4k-c2000000-k2500",
+   "nonzero_blocks": 89,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "8E94A915-7EFE-4C89-87EE-9792612CB78F"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 1093,
+   "bytes": 8953856,
+   "container_uuid": "01FD491A-379C-4AA7-BAB4-35401D4B1500",
+   "content_blocks": 700,
+   "content_sha256": "9f2145cfc71c9b023b1c0d8249bf622de902580ed404c4e627c4aaa28704d284",
+   "digest": "6c3b0de4b3cf89cc",
+   "dump": "r-b8k-c700-k300.bd",
+   "free": 300,
+   "name": "r-b8k-c700-k300",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "DC7F2D19-1EB0-4C37-AE72-0FB53E9E0010"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 3293,
+   "bytes": 26976256,
+   "container_uuid": "0CEEBAD9-2F00-4832-B325-E5768685A7D2",
+   "content_blocks": 700,
+   "content_sha256": "dad594e7684b21a10c0108509872287054812c23883377d71be04586fe0290a3",
+   "digest": "6cf266edb8800d0e",
+   "dump": "r-b8k-c700-k2500.bd",
+   "free": 2500,
+   "name": "r-b8k-c700-k2500",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "D2C8ED3A-DB9F-41E1-A0B3-22A669665968"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 16465,
+   "bytes": 134881280,
+   "container_uuid": "EAD00E95-5D7E-4917-9F1F-2FF8F1CB43BC",
+   "content_blocks": 16000,
+   "content_sha256": "cedb96d64e0611b7e8a61c3c34ccce085775ff63f7906aadae572d736d564b39",
+   "digest": "ac829633c6472741",
+   "dump": "r-b8k-c16000-k300.bd",
+   "free": 300,
+   "name": "r-b8k-c16000-k300",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "64C2200D-BE85-40C7-92F5-C0C5EE33ED43"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 18665,
+   "bytes": 152903680,
+   "container_uuid": "874F90B9-0893-49AE-B870-0F078FA6A77D",
+   "content_blocks": 16000,
+   "content_sha256": "ad9f7bb5ae9e1932a18583b9afcf652ef7909e976fc7f351a0f3471a489477fc",
+   "digest": "403cc82f294ddff7",
+   "dump": "r-b8k-c16000-k2500.bd",
+   "free": 2500,
+   "name": "r-b8k-c16000-k2500",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "D40633C0-13CE-4C5E-9A34-877E1F62AC58"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 120928,
+   "bytes": 990642176,
+   "container_uuid": "8A58A0F3-9DF5-406C-AB1D-A261D5B023E1",
+   "content_blocks": 120000,
+   "content_sha256": "b48a018a5d62a2e45e3bf91a14b32fb1310503dfc176547c40de445a8064a292",
+   "digest": "5d0b1605ac654aef",
+   "dump": "r-b8k-c120000-k300.bd",
+   "free": 300,
+   "name": "r-b8k-c120000-k300",
+   "nonzero_blocks": 38,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "DE2E0BEB-BDC5-41B2-83E0-BFDB82352E6A"
+    }
+   ]
+  },
+  {
+   "block_size": 8192,
+   "blocks": 123128,
+   "bytes": 1008664576,
+   "container_uuid": "BA452719-7F1A-4E9A-ACA0-2A327E6885B4",
+   "content_blocks": 120000,
+   "content_sha256": "a318774a7c1ed2a66583dc1128ef3292def0d6f2b5de8bed5362aa0380e0f406",
+   "digest": "7b3ec602a34a433a",
+   "dump": "r-b8k-c120000-k2500.bd",
+   "free": 2500,
+   "name": "r-b8k-c120000-k2500",
+   "nonzero_blocks": 38,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "26DDA185-2E19-4421-B405-65793171386C"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 1093,
+   "bytes": 17907712,
+   "container_uuid": "A5E238D8-9F58-4409-AA5D-1380758511D7",
+   "content_blocks": 700,
+   "content_sha256": "26e4cc0548f31ec4c227cbf7843e77271f489bdb0a759539ea5591be60af73c7",
+   "digest": "c2ba2d924160ee47",
+   "dump": "r-b16k-c700-k300.bd",
+   "free": 300,
+   "name": "r-b16k-c700-k300",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "25CB1973-7D1D-47C1-9F69-40A8C5964439"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 3293,
+   "bytes": 53952512,
+   "container_uuid": "80B7CF04-A82C-45DD-9A0F-4BBBBD0F1970",
+   "content_blocks": 700,
+   "content_sha256": "15a164545334142081a4696d89163bbdec3ca356a9c232293828d7ebdb78c32b",
+   "digest": "4f5111171aec6a73",
+   "dump": "r-b16k-c700-k2500.bd",
+   "free": 2500,
+   "name": "r-b16k-c700-k2500",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "A4F4D667-40C6-4742-98A7-9F6CAFF1BC57"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 16393,
+   "bytes": 268582912,
+   "container_uuid": "5C67F3C7-E617-40D6-9E4C-EB068F17DB70",
+   "content_blocks": 16000,
+   "content_sha256": "e6a32dbac7a01b659bfe7ce4382057352818b4a51c00dcf416f0b1317014cecb",
+   "digest": "cbf618df2fc4d48b",
+   "dump": "r-b16k-c16000-k300.bd",
+   "free": 300,
+   "name": "r-b16k-c16000-k300",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "A2A54584-75C7-4DBE-8A59-D5E1608B1539"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 18665,
+   "bytes": 305807360,
+   "container_uuid": "1F4D5401-7C68-4D00-97EC-63DDA145C4ED",
+   "content_blocks": 16000,
+   "content_sha256": "0ef4e9841dfab5c79d6d13c87a7bea7e5668000dc988d534a4f5129301b8b637",
+   "digest": "7d621cf2876108a9",
+   "dump": "r-b16k-c16000-k2500.bd",
+   "free": 2500,
+   "name": "r-b16k-c16000-k2500",
+   "nonzero_blocks": 35,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "148BE419-6C17-4A4D-AD43-91AEDFC5C4A3"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 121281,
+   "bytes": 1987067904,
+   "container_uuid": "DFD9C899-0F07-4F9B-B1CA-B613A6F045BA",
+   "content_blocks": 120000,
+   "content_sha256": "a84ef6faa07f9008598ae6c2267d146554dca32aacb0f4fc53e1d1fe0b3be869",
+   "digest": "9cf60c84db567f48",
+   "dump": "r-b16k-c120000-k300.bd",
+   "free": 300,
+   "name": "r-b16k-c120000-k300",
+   "nonzero_blocks": 38,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "106C5795-B661-497C-8C46-A7165E1A2100"
+    }
+   ]
+  },
+  {
+   "block_size": 16384,
+   "blocks": 123481,
+   "bytes": 2023112704,
+   "container_uuid": "96F32B22-F984-4E87-A5DE-3D90CAE0E338",
+   "content_blocks": 120000,
+   "content_sha256": "62bdc56606059206e628443929a7162c7c66c818c5713c484b8f2b45108e7a8e",
+   "digest": "1cd186111f26841c",
+   "dump": "r-b16k-c120000-k2500.bd",
+   "free": 2500,
+   "name": "r-b16k-c120000-k2500",
+   "nonzero_blocks": 38,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "703B2B2E-431E-4EA9-AF0E-895A19151EEA"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 1093,
+   "bytes": 35815424,
+   "container_uuid": "4A2429DB-CD54-416A-BE91-75CA29CEBD5D",
+   "content_blocks": 700,
+   "content_sha256": "42e2410d1d23d20294db7055c3c644639ee00ad0641fe91acac10c2376574819",
+   "digest": "4f3f1ac28c453ba1",
+   "dump": "r-b32k-c700-k300.bd",
+   "free": 300,
+   "name": "r-b32k-c700-k300",
+   "nonzero_blocks": 37,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "D513AB48-22B6-4CD3-AFAF-59749600F914"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 3293,
+   "bytes": 107905024,
+   "container_uuid": "9F47A461-E4DB-40CE-940B-E0D2ABCE158E",
+   "content_blocks": 700,
+   "content_sha256": "a292fd137252d9f5c6e2f102ff7d23a5e23ae005c41589c499b4f9b8bb64cb83",
+   "digest": "a80d0acfc51e4e2a",
+   "dump": "r-b32k-c700-k2500.bd",
+   "free": 2500,
+   "name": "r-b32k-c700-k2500",
+   "nonzero_blocks": 37,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "898EB350-6D02-40B9-921B-CA1B3293B555"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 16425,
+   "bytes": 538214400,
+   "container_uuid": "3A1579BE-55FF-401D-9ACE-CAD448E417D3",
+   "content_blocks": 16000,
+   "content_sha256": "57782b8d23f042b8ec402f5b5e6341e0f2bf1d4b158448cbe90bf37c5347b005",
+   "digest": "a33d5ba79c75e15c",
+   "dump": "r-b32k-c16000-k300.bd",
+   "free": 300,
+   "name": "r-b32k-c16000-k300",
+   "nonzero_blocks": 37,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "9F1E175E-D863-4817-AB3E-112CDEC2AC4D"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 18625,
+   "bytes": 610304000,
+   "container_uuid": "1FE93C93-B9A8-4D2F-AA16-A7A828376049",
+   "content_blocks": 16000,
+   "content_sha256": "258690fe80c1788954256b35112e065ebdb3373a9afce0a5ba2ccf87d1f6e1c3",
+   "digest": "80c49a63ea26fa5b",
+   "dump": "r-b32k-c16000-k2500.bd",
+   "free": 2500,
+   "name": "r-b32k-c16000-k2500",
+   "nonzero_blocks": 37,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "1B6C7F6B-AA7A-44BC-9989-D476AA128E45"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 121397,
+   "bytes": 3977936896,
+   "container_uuid": "06C52B1D-BD4E-4AFD-BD65-DCE5E6415FDB",
+   "content_blocks": 120000,
+   "content_sha256": "87dc560092ec0a7af26a4dea3d0986ff409f74d9812d2a11108f5100244f261b",
+   "digest": "f2aab9614c0477c1",
+   "dump": "r-b32k-c120000-k300.bd",
+   "free": 300,
+   "name": "r-b32k-c120000-k300",
+   "nonzero_blocks": 40,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "5042E600-6E1E-4CAD-802F-2BF3DD4052F2"
+    }
+   ]
+  },
+  {
+   "block_size": 32768,
+   "blocks": 123597,
+   "bytes": 4050026496,
+   "container_uuid": "82C80F29-65A6-4AF1-A1B5-30510B489731",
+   "content_blocks": 120000,
+   "content_sha256": "9f42e323348a99964212b28bbf69561e302f0c387a81f26b0be17a77f6671611",
+   "digest": "08580bdda68114d6",
+   "dump": "r-b32k-c120000-k2500.bd",
+   "free": 2500,
+   "name": "r-b32k-c120000-k2500",
+   "nonzero_blocks": 40,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "C2CC01DF-A1A7-4F61-A97E-FB889234EF5A"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 1093,
+   "bytes": 71630848,
+   "container_uuid": "3218EAC4-FB49-44C6-8A48-FEBAE0D5C1CC",
+   "content_blocks": 700,
+   "content_sha256": "5b91df7171aa305edf1828a1f65d1ee135769e9012c766867aae70d4d2fdaebf",
+   "digest": "c7d6dbbd30a18286",
+   "dump": "r-b64k-c700-k300.bd",
+   "free": 300,
+   "name": "r-b64k-c700-k300",
+   "nonzero_blocks": 39,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "9E36CF1A-1A77-4372-B081-109661FF1D24"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 3293,
+   "bytes": 215810048,
+   "container_uuid": "B8FF1B13-3103-45B9-B973-F0BE312A7726",
+   "content_blocks": 700,
+   "content_sha256": "f9fcf55143b52eeed429712d916c4d1303fcc2abe159d6aa5b096d51060ac92f",
+   "digest": "c343b41b883b634a",
+   "dump": "r-b64k-c700-k2500.bd",
+   "free": 2500,
+   "name": "r-b64k-c700-k2500",
+   "nonzero_blocks": 39,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "33DB8602-98F3-40D7-B523-40F9C1093CC2"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 16457,
+   "bytes": 1078525952,
+   "container_uuid": "17662C21-3354-43A3-9FE5-195FFC975F1D",
+   "content_blocks": 16000,
+   "content_sha256": "2f66aab868fad610e2d817b28340e43c11e359088cb63c0a2a2e75ba5f48d392",
+   "digest": "c1b77a936615c1e0",
+   "dump": "r-b64k-c16000-k300.bd",
+   "free": 300,
+   "name": "r-b64k-c16000-k300",
+   "nonzero_blocks": 39,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "D69A7D2E-6273-4478-894A-6D0B075E5F2A"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 18657,
+   "bytes": 1222705152,
+   "container_uuid": "9136A01A-DAB5-4038-B54E-D464435864FB",
+   "content_blocks": 16000,
+   "content_sha256": "e7eec5c834a7e27f0b1d6375da3e0e790139d3d7503399d2f1fdffc46047abe1",
+   "digest": "3d7f173f962a57ed",
+   "dump": "r-b64k-c16000-k2500.bd",
+   "free": 2500,
+   "name": "r-b64k-c16000-k2500",
+   "nonzero_blocks": 39,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "B2880509-4093-454F-954A-3A9226C0F542"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 121809,
+   "bytes": 7982874624,
+   "container_uuid": "2F1EA6D4-65FD-4768-B4DE-B78FEFCFA1A9",
+   "content_blocks": 120000,
+   "content_sha256": "ab88838a40281873d3d470ba3cb3157235c0862ee5492027b4c700a9ccd39488",
+   "digest": "178e60bf16ef4867",
+   "dump": "r-b64k-c120000-k300.bd",
+   "free": 300,
+   "name": "r-b64k-c120000-k300",
+   "nonzero_blocks": 42,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "B3E14203-4181-454D-9670-5EB17A4486A2"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 124105,
+   "bytes": 8133345280,
+   "container_uuid": "1692E79B-556B-4E49-BAE8-F52F894CE94D",
+   "content_blocks": 120000,
+   "content_sha256": "908f8c63739e45a4dc83be7b73da6a77ebeb8a2ef8c89cc046d305a0e33751fb",
+   "digest": "bb1775edd00756e0",
+   "dump": "r-b64k-c120000-k2500.bd",
+   "free": 2500,
+   "name": "r-b64k-c120000-k2500",
+   "nonzero_blocks": 42,
+   "trials": [
+    "block",
+    "mib",
+    "files",
+    "user"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "07FD848F-ACCF-4770-91A6-68BD662E9EC3"
+    }
+   ]
+  },
+  {
+   "block_size": 4096,
+   "blocks": 136011,
+   "bytes": 557101056,
+   "container_uuid": "6135A5CD-BBB4-40D9-BC0C-70FFAB7D01C1",
+   "content_blocks": 135000,
+   "content_sha256": "17787ccdb35bc84ae1bf5d8f30426f9f25b057d8cf5b538a6d5dcff39d0ab515",
+   "digest": "c8cd694e5a2b94c7",
+   "dump": "r2-b4k-c135000-k300.bd",
+   "free": 300,
+   "name": "r2-b4k-c135000-k300",
+   "nonzero_blocks": 37,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "5BFE125B-C466-4390-B940-630C5A879D45"
+    },
+    {
+     "name": "Reserve 2",
+     "slot": 1,
+     "uuid": "119E6B5C-5919-4487-9451-20EED2750089"
+    }
+   ]
+  },
+  {
+   "block_size": 65536,
+   "blocks": 9431,
+   "bytes": 618070016,
+   "container_uuid": "5DCC3413-A511-4FD3-993C-18D7E81C5B93",
+   "content_blocks": 9000,
+   "content_sha256": "93f4083c73653c2975ede03a73a176266ed5b65bd0780da25bb47dce36c78c79",
+   "digest": "8da86fb749f7c961",
+   "dump": "r2-b64k-c9000-k300.bd",
+   "free": 300,
+   "name": "r2-b64k-c9000-k300",
+   "nonzero_blocks": 50,
+   "trials": [
+    "block"
+   ],
+   "volumes": [
+    {
+     "name": "Reserve",
+     "slot": 0,
+     "uuid": "CF99A1EB-88F7-4A3E-8C7C-638DAE70C835"
+    },
+    {
+     "name": "Reserve 2",
+     "slot": 1,
+     "uuid": "89AD4B2F-A367-4D9A-8CFE-A8BE8AC6DA0E"
+    }
+   ]
+  }
+ ],
+ "made_by": "the APFS writer of ferrosys 0.6.0"
+}

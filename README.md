@@ -285,6 +285,38 @@ A probe that takes arguments gets them from the `args` input:
   times, sizes, link targets, each attribute's name, length and digest, a
   compressed file's type, and each file's digest. The container is deleted
   on the runner, and no byte of it is kept.
+- `reserve`: how much of a container's free space macOS writes into.
+  `reserve/` holds 34 containers that ferrosys's APFS writer formatted, each
+  around one file of zeros and sized to leave a stated count of blocks
+  free, 300 or 2,500: every block size, containers from about a thousand
+  blocks to two million, and two of two volumes. A zero block is left out of
+  a block dump, so the zeros cost nothing to send. Each trial restores a
+  container, mounts its first volume read-write and fills it until a call
+  fails: `block` writes a block a call, each synced, as root; `user` does
+  the same as the runner's own user; `mib` writes 1 MiB a call and then a
+  block a call; `files` creates empty files. Each records what it took,
+  the call that failed and its errno, and `statvfs` along the way, then
+  whether an empty file and a block still go in. The second volume of a
+  two-volume container is asked for one block after the first is full.
+  `sm_stats -v` reads the free extents before and after, and `fsck_apfs -n
+  -W` checks the container after. The kernel names the blocks a change
+  asks for and the margin beside them where it refuses one, and
+  `system-log.ndjson` keeps those messages, with `times/` bounding each
+  trial's. `results.json` gathers every trial's record. Arguments narrow
+  the run: a block size (`b4k`), a trial, a container's name, and a last
+  `K/N` that takes the Kth of N equal shares.
+- `xattrnames`: which extended attribute names macOS takes. On a fresh
+  container `newfs_apfs` formats, `setxattr` is asked for names of every
+  length to 300 bytes and longer, of characters of two to four bytes to
+  either side of 127 bytes, and of the `security.`, `trusted.`, `user.`
+  and `system.posix_acl_` namespaces, each read back, listed and removed.
+  `xattrnames/` holds two containers ferrosys's APFS writer formatted with
+  attributes named up to the longest it holds at 4 and 64 KiB blocks, and
+  with attributes of those namespaces, among them two POSIX ACLs. Each is
+  checked by `fsck_apfs -n -W`, its volume mounted read-only, listed, read
+  and listed by `apfs_checkseal -q -v`; mounted read-write, an attribute set
+  on every file and each one it holds set again; then checked and listed
+  again, and dumped.
 
 ## What a run keeps
 

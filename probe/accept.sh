@@ -93,6 +93,10 @@ pass_rw() {
         mount_at "$p" "$vdev" "$mnt" || continue
         step "$p-info" 60 diskutil info -plist "$vdev"
         if [ "$k" = 1 ] && [ -n "$room" ]; then
+            # The read-only pass turned ownership on, and the root directory is root's: the
+            # runner's own user writes where ownership is off, as on any attached volume, and
+            # what macOS keeps free follows the writing process, not the volume's owners.
+            sstep "$p-ownership-off" 60 diskutil disableOwnership "$vdev"
             step "$p-room" 900 "$PY" "$AU" room "$mnt" "$n" "$room" "$OUT/files/$p-room.json"
         fi
         if uuid=$(volume_uuid "$p-info"); then

@@ -13,8 +13,11 @@ dump per container. OUT is the probe's output directory.
 `select` prints one `NAME TRIAL` line for each trial WORDS asks for: with no
 word, every trial images.json names; a block size word such as `b4k` keeps
 the containers of that block size, a trial word (`block`, `mib`, `files`,
-`user`) keeps that trial, a container's name keeps that container, and a
-last word `K/N` keeps the Kth of N equal shares of what the others kept.
+`user`, `trace`, `stream`) keeps the trials of that kind, `again` the
+repetitions, a container's name keeps that container, and a last word `K/N`
+keeps the Kth of N equal shares of what the others kept. A trial named
+`KIND.K` is the Kth of several of that kind on one container, each from a
+fresh copy of it.
 
 `fill` writes to the volume mounted at MNT until a call fails:
 
@@ -23,7 +26,12 @@ last word `K/N` keeps the Kth of N equal shares of what the others kept.
 - `user`: the same, as whoever runs it, where `block` runs as root;
 - `mib`: 1 MiB a call into one file with no fsync until a call fails, then
   fsync, then on into a second file a block a call as `block` does;
-- `files`: empty files, one a call, until one cannot be created.
+- `files`: empty files, one a call, until one cannot be created;
+- `trace`: as `block`, recording after every call the blocks statvfs reports
+  available and the blocks the file has allocated, wherever either moves by
+  other than the one block written;
+- `stream`: 1 MiB a call with no fsync, recording the same after every call
+  wherever either moves by other than the MiB written, then fsync.
 
 Each records the bytes or files taken, the call that failed and its errno,
 statvfs(3) before the first call, every 32 calls and after the failure, and
@@ -68,7 +76,12 @@ def images(reserve):
     return read_json(os.path.join(reserve, "images.json"))["images"]
 
 
-TRIALS = ("block", "user", "mib", "files")
+TRIALS = ("block", "user", "mib", "files", "trace", "stream")
+
+
+def kind(trial):
+    """The kind of a trial, `block` for `block.2`."""
+    return trial.split(".")[0]
 
 
 def select(reserve, words):
@@ -79,7 +92,7 @@ def select(reserve, words):
             raise SystemExit("no share %d of %d" % (k, n))
         shard, words = (k, n), words[:-1]
     sizes = {w for w in words if w[0] == "b" and w.endswith("k") and w[1:-1].isdigit()}
-    trials = {w for w in words if w in TRIALS}
+    trials = {w for w in words if w in TRIALS or w == "again"}
     names = {i["name"] for i in images(reserve)}
     named = {w for w in words if w in names}
     unknown = set(words) - sizes - trials - named
@@ -92,7 +105,7 @@ def select(reserve, words):
         if named and image["name"] not in named:
             continue
         for trial in image["trials"]:
-            if trials and trial not in trials:
+            if trials and kind(trial) not in trials and not ("again" in trials and "." in trial):
                 continue
             chosen.append((image["name"], trial))
     if shard:
@@ -169,12 +182,60 @@ def blocks_into(fd, data, rec, mnt, counter):
     rec["stopped"] = {"call": None, "limit": True, "at": rec[counter]}
 
 
+def traced(fd, data, rec, mnt, counter, sync):
+    """Write DATA a call until a call fails or a limit is met, syncing each where SYNC says,
+    and record every call after which the available blocks or the file's allocated blocks
+    moved by other than DATA's blocks."""
+    bs = rec["block_size"]
+    step = len(data) // bs
+    avail, alloc = space(mnt)["bavail"], os.fstat(fd).st_blocks * 512 // bs
+    rec["events"] = []
+    t0 = time.time()
+    while rec[counter] < LIMIT_CALLS and time.time() - t0 < LIMIT_SECS:
+        stage = "write"
+        try:
+            n = os.write(fd, data)
+            if n != len(data):
+                rec["stopped"] = {"call": "write", "short": n, "at": rec[counter]}
+                return
+            if sync:
+                stage = "fsync"
+                os.fsync(fd)
+        except OSError as e:
+            rec["stopped"] = {"call": stage, "errno": errname(e), "at": rec[counter]}
+            return
+        rec[counter] += 1
+        now_avail, now_alloc = space(mnt)["bavail"], os.fstat(fd).st_blocks * 512 // bs
+        if avail - now_avail != step or now_alloc - alloc != step:
+            rec["events"].append([rec[counter], avail, now_avail, alloc, now_alloc])
+        avail, alloc = now_avail, now_alloc
+    rec["stopped"] = {"call": None, "limit": True, "at": rec[counter]}
+
+
 def fill(mnt, trial, bs, name, out):
     bs = int(bs)
     block = pattern(name, bs)
     rec = {"trial": trial, "block_size": bs, "uid": os.getuid(), "before": space(mnt),
            "space": [], "started": time.time()}
-    if trial in ("block", "user"):
+    trial = kind(trial)
+    if trial in ("trace", "stream"):
+        rec["blocks"] = 0
+        fd = os.open(os.path.join(mnt, "fill-a"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        try:
+            if trial == "trace":
+                traced(fd, block, rec, mnt, "blocks", True)
+            else:
+                traced(fd, pattern(name, MIB), rec, mnt, "blocks", False)
+                try:
+                    os.fsync(fd)
+                    rec["fsync"] = 0
+                except OSError as e:
+                    rec["fsync"] = errname(e)
+            rec["allocated"] = os.fstat(fd).st_blocks * 512 // bs
+        finally:
+            os.close(fd)
+        rec["bytes"] = rec["blocks"] * (bs if trial == "trace" else MIB)
+    elif trial in ("block", "user"):
         rec["blocks"] = 0
         fd = os.open(os.path.join(mnt, "fill-a"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         try:

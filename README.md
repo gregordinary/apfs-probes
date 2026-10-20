@@ -286,15 +286,18 @@ A probe that takes arguments gets them from the `args` input:
   compressed file's type, and each file's digest. The container is deleted
   on the runner, and no byte of it is kept.
 - `reserve`: how much of a container's free space macOS writes into.
-  `reserve/` holds 41 containers that ferrosys's APFS writer formatted, each
+  `reserve/` holds 47 containers that ferrosys's APFS writer formatted, each
   around one file of zeros and sized to leave a stated count of blocks
-  free, 300 or 2,500: every block size, containers from about a thousand
-  blocks to two million, and two of two volumes. A zero block is left out of
+  free, 300, 2,500 or 12,000: every block size, containers from about a
+  thousand blocks to two million, and two of two volumes. A zero block is left out of
   a block dump, so the zeros cost nothing to send. Each trial restores a
   container, mounts its first volume read-write and fills it until a call
   fails: `block` writes a block a call, each synced, as root; `user` does
   the same as the runner's own user; `mib` writes 1 MiB a call and then a
-  block a call; `files` creates empty files. Each records what it took,
+  block a call; `files` creates empty files; `trace` and `stream` write a
+  block a call (synced) and 1 MiB a call, and record wherever the blocks
+  available or the file's allocated blocks move by more than a write. A
+  trial named `KIND.K` is one of several of a kind, each on a fresh copy. Each records what it took,
   the call that failed and its errno, and `statvfs` along the way, then
   whether an empty file and a block still go in. The second volume of a
   two-volume container is asked for one block after the first is full.
@@ -303,8 +306,9 @@ A probe that takes arguments gets them from the `args` input:
   asks for and the margin beside them where it refuses one, and
   `system-log.ndjson` keeps those messages, with `times/` bounding each
   trial's. `results.json` gathers every trial's record. Arguments narrow
-  the run: a block size (`b4k`), a trial, a container's name, and a last
-  `K/N` that takes the Kth of N equal shares.
+  the run: a block size (`b4k`), a trial's kind, `again` for the repeated
+  trials, a container's name, and a last `K/N` that takes the Kth of N
+  equal shares.
 - `xattrnames`: which extended attribute names macOS takes. On a fresh
   container `newfs_apfs` formats, `setxattr` is asked for names of every
   length to 300 bytes and longer, of characters of two to four bytes to

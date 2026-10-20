@@ -19,7 +19,8 @@
 # bounds the ones each trial drew: the kernel names the blocks a change asks
 # for and the margin beside them where it refuses one.
 #
-# Usage: reserve.sh OUTDIR [bNk | block | user | mib | files | NAME]... [K/N]
+# Usage: reserve.sh OUTDIR [bNk | block | user | mib | files | trace | stream | again | NAME]...
+#   [K/N]
 #   with no argument, every trial of every container; see reserveutil.py
 #   select for the words.
 
@@ -59,7 +60,7 @@ trial() {
                 mount_vol "$p-v$k" "/dev/$vdev" "$mnt" || continue
                 step "$p-v$k-info" 60 diskutil info -plist "$vdev"
                 if [ "$k" = 1 ]; then
-                    [ "$t" = user ] && run=step
+                    case "$t" in user*) run=step ;; esac
                     $run "$p-v$k-fill" 300 "$PY" "$RU" fill "$mnt" "$t" "$bs" "$n" \
                         "$OUT/fills/$p.json"
                 else

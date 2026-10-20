@@ -185,7 +185,7 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 60 containers that ferrosys's APFS writer
+  formats. `accept/` holds 62 containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
@@ -201,14 +201,16 @@ A probe that takes arguments gets them from the `args` input:
   own. Among those files is the probe's character device numbered 0,0, of
   which `fsck_apfs -W` warns on the containers macOS wrote as well, so a
   container may draw that warning once for each device node it is stated to
-  hold numbered zero, and nothing besides. In the three named `fit-` the
+  hold numbered zero, and nothing besides. In the five named `fit-` the
   first volume holds a generated tree as well, and the container is the
   size ferrosys finds for it: `fit-ramdisk`, one case-sensitive volume with
   no room asked for, records no block free and is full; `fit-v2` is two
-  volumes at the smallest size with a slot for each; and `fit-slack` is
-  sized asking for a fifth of it free, 231 of 1,152 blocks, and is full as
-  well, since macOS refuses a change where fewer blocks are free than it
-  sets aside for one. For each populated
+  volumes at the smallest size with a slot for each; and `fit-slack`,
+  `fit-room-b4k` and `fit-room-b64k` are sized to leave room any user can
+  write: a fifth of the container, 64 MiB and 256 MiB. Each of those is
+  expected to take its room (`room:BYTES` in `images.json`): before the
+  probe's file, the runner's own user writes that many bytes into the
+  first volume, a mebibyte a write, and reads them back after. For each populated
   container, `images.json` states every
   entry as the mounted volume's manifest describes one, and what
   `apfs_checkseal -q -v` lists of it. They cover every block size, every release
@@ -238,7 +240,7 @@ A probe that takes arguments gets them from the `args` input:
   containers of at most five volumes and `many` the one of a hundred;
   `controls` runs the three `newfs_apfs` containers, `limits` the
   seventeen that set a node limit, `trees` the eight that hold a tree,
-  `corpus` the four that hold a corpus volume, and `fit` the three sized to
+  `corpus` the four that hold a corpus volume, and `fit` the five sized to
   their tree. Of a populated volume, every
   entry is held by path to what is stated:
   its inode number, mode, owner, group, flags and four times; a file's link

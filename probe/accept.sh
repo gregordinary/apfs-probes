@@ -16,9 +16,11 @@
 #   rw      attached again, every volume mounted read-write, a file written to
 #           it and synced, and the volume unmounted; then fsck_apfs -n -W again
 #           and the image dumped as macOS left it. A container images.json
-#           expects to be full is to refuse the file for want of room
+#           expects to be full is to refuse the file for want of room, and one
+#           it expects to take room:BYTES first takes BYTES into its first
+#           volume, written by the runner's own user a mebibyte a write
 #   back    attached again, every volume mounted read-only and the file read
-#           back
+#           back, and the room with it
 #
 # acceptutil.py verdict judges each container from its steps, and
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
@@ -78,9 +80,11 @@ pass_ro() {
     done
 }
 
-# pass_rw N DEV : write a file to every volume of the container on DEV.
+# pass_rw N DEV : write a file to every volume of the container on DEV, and
+# the room the container is stated to take to its first.
 pass_rw() {
-    local n=$1 dev=$2 k=0 vdev p mnt uuid
+    local n=$1 dev=$2 k=0 vdev p mnt uuid room
+    room=$("$PY" "$AU" room-bytes "$ACC" "$n" 2>/dev/null)
     list_named "$n-rw" "$dev" || return 1
     for vdev in $(devices "$LIST" "$CONT"); do
         k=$((k + 1))
@@ -88,6 +92,9 @@ pass_rw() {
         mnt="$WORK/mnt/$p"
         mount_at "$p" "$vdev" "$mnt" || continue
         step "$p-info" 60 diskutil info -plist "$vdev"
+        if [ "$k" = 1 ] && [ -n "$room" ]; then
+            step "$p-room" 900 "$PY" "$AU" room "$mnt" "$n" "$room" "$OUT/files/$p-room.json"
+        fi
         if uuid=$(volume_uuid "$p-info"); then
             sstep "$p-write" 120 "$PY" "$AU" write "$mnt" "$n" "$uuid" "$OUT/files/$p.json"
         fi
@@ -96,9 +103,11 @@ pass_rw() {
     done
 }
 
-# pass_back N DEV : read the file back from every volume of the container on DEV.
+# pass_back N DEV : read the file back from every volume of the container on DEV,
+# and the room from its first.
 pass_back() {
-    local n=$1 dev=$2 k=0 vdev p mnt uuid
+    local n=$1 dev=$2 k=0 vdev p mnt uuid room
+    room=$("$PY" "$AU" room-bytes "$ACC" "$n" 2>/dev/null)
     list_named "$n-back" "$dev" || return 1
     for vdev in $(devices "$LIST" "$CONT"); do
         k=$((k + 1))
@@ -106,6 +115,9 @@ pass_back() {
         mnt="$WORK/mnt/$p"
         mount_at "$p" "$vdev" "$mnt" readOnly || continue
         step "$p-info" 60 diskutil info -plist "$vdev"
+        if [ "$k" = 1 ] && [ -n "$room" ]; then
+            step "$p-room" 900 "$PY" "$AU" room-read "$mnt" "$n" "$room" "$OUT/files/$p-room.json"
+        fi
         if uuid=$(volume_uuid "$p-info"); then
             sstep "$p-read" 120 "$PY" "$AU" read "$mnt" "$n" "$uuid" "$OUT/files/$p.json"
         fi

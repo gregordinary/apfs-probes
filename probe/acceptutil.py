@@ -7,6 +7,9 @@
     acceptutil.py listing ACCEPT OUT NAME LIST.plist CONTAINER
     acceptutil.py write MNT NAME VOLUME-UUID OUT.json
     acceptutil.py read MNT NAME VOLUME-UUID OUT.json
+    acceptutil.py room-bytes ACCEPT NAME
+    acceptutil.py room MNT NAME BYTES OUT.json
+    acceptutil.py room-read MNT NAME BYTES OUT.json
     acceptutil.py verdict ACCEPT OUT NAME
     acceptutil.py index ACCEPT OUT
 
@@ -62,6 +65,13 @@ container is accepted where every check passes:
   unmounted, `fsck_apfs -n -W` passes again as above;
 - mounted again, every volume reads the file back as written.
 
+A container images.json expects to take `room:BYTES` is held to every check
+`accept` holds a container to, and before the probe's file the runner's own
+user writes BYTES into the first volume, a mebibyte a write and synced at
+the end (`room`), every write taken; mounted again, the volume reads them
+back (`room-read`). `room-bytes` prints BYTES for such a container, and
+nothing for any other.
+
 A container images.json expects to be `full` is one macOS finds too little
 room in to take the file: one with no block free, or with fewer than macOS
 sets aside before a change. It is held to the same checks but the file:
@@ -91,6 +101,8 @@ import blockdump  # noqa: E402
 CONTROLS = ["control-b4k-mid", "control-b16k-far-keep", "control-b64k-floor"]
 FEW = 5
 FILE = "accept.txt"
+ROOM_FILE = "room.bin"
+MIB = 1 << 20
 
 
 def read_json(path):
@@ -358,6 +370,91 @@ def read(mnt, name, key, out):
     write_json(out, result)
     if not result["same"]:
         raise SystemExit("%s volume %s: the file reads back otherwise" % (name, key))
+
+
+def room_of(image):
+    """The bytes a container images.json expects to take as room, or None."""
+    expect = image.get("expect", "")
+    return int(expect[len("room:"):]) if expect.startswith("room:") else None
+
+
+def room_bytes(acc, name):
+    if name in CONTROLS:
+        return
+    room = room_of(stated(acc, None, name))
+    if room is not None:
+        print(room)
+
+
+def room_chunks(name, nbytes):
+    """The room file's content, a mebibyte at a time."""
+    unit = ("%s: room the accept probe writes.\n" % name).encode()
+    chunk = (unit * (MIB // len(unit) + 1))[:MIB]
+    left = nbytes
+    while left > 0:
+        yield chunk[:min(MIB, left)]
+        left -= MIB
+
+
+def statvfs(path):
+    s = os.statvfs(path)
+    return {"bavail": s.f_bavail, "bfree": s.f_bfree, "blocks": s.f_blocks}
+
+
+def room(mnt, name, nbytes, out):
+    nbytes = int(nbytes)
+    result = {"path": ROOM_FILE, "len": nbytes, "taken": 0, "uid": os.getuid(),
+              "before": statvfs(mnt)}
+    stage = "open"
+    try:
+        fd = os.open(os.path.join(mnt, ROOM_FILE), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        try:
+            stage = "write"
+            for chunk in room_chunks(name, nbytes):
+                n = os.write(fd, chunk)
+                result["taken"] += n
+                if n != len(chunk):
+                    raise OSError(errno.ENOSPC, "a write took %d of %d bytes" % (n, len(chunk)))
+            stage = "fsync"
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        result["written"] = result["taken"] == nbytes
+    except OSError as e:
+        result["written"] = False
+        result["stage"] = stage
+        result["errno"] = errno.errorcode.get(e.errno, e.errno)
+        result["error"] = str(e)
+    result["after"] = statvfs(mnt)
+    write_json(out, result)
+    if not result["written"]:
+        raise SystemExit("the room was not written: %s" % result.get("error"))
+
+
+def room_read(mnt, name, nbytes, out):
+    nbytes = int(nbytes)
+    want = hashlib.sha256()
+    for chunk in room_chunks(name, nbytes):
+        want.update(chunk)
+    result = {"path": ROOM_FILE, "len_stated": nbytes, "sha256_stated": want.hexdigest()}
+    try:
+        got, n = hashlib.sha256(), 0
+        with open(os.path.join(mnt, ROOM_FILE), "rb") as f:
+            while True:
+                block = f.read(MIB)
+                if not block:
+                    break
+                got.update(block)
+                n += len(block)
+        result["len"] = n
+        result["sha256"] = got.hexdigest()
+        result["same"] = result["sha256"] == result["sha256_stated"]
+    except OSError as e:
+        result["same"] = False
+        result["error"] = str(e)
+    write_json(out, result)
+    if not result["same"]:
+        raise SystemExit("the room reads back otherwise")
 
 
 # -- the verdict --------------------------------------------------------------
@@ -647,7 +744,16 @@ def verdict(acc, out, name):
     n = len(listed["devices"])
     observed = {}
     full = image["expect"] == "full"
+    room = room_of(image)
     slots = [volume_checks(image, out, name, k, problems, observed) for k in range(1, n + 1)]
+    if room is not None:
+        took = record(out, "%s-rw-v1-room" % name)
+        back = record(out, "%s-back-v1-room" % name)
+        if took is None or not took["written"] or took["taken"] != room:
+            problems.append("the room of %d bytes was not taken: %s" % (
+                room, took and (took["taken"], took.get("stage"), took.get("error"))))
+        if back is None or not back["same"]:
+            problems.append("the room did not read back: %s" % (back and back.get("error")))
     for k in range(1, n + 1):
         p = "%s-rw-v%d" % (name, k)
         if status.get(p + "-mount") != 0:
@@ -690,7 +796,7 @@ def verdict(acc, out, name):
     }
     result["fsck_warnings"] = {k: fsck_warnings(out, name + k)[0] for k in ("-fsck", "-fsck-written")}
     result["as_expected"] = (result["verdict"] == "accepted") == (
-        image["expect"] in ("accept", "warn-future-time", "full"))
+        image["expect"] in ("accept", "warn-future-time", "full") or room is not None)
     write_json(os.path.join(out, "verdicts", name + ".json"), result)
     print(json.dumps({"verdict": result["verdict"], "as_expected": result["as_expected"],
                       "problems": len(problems)}))
@@ -742,6 +848,12 @@ def main(argv):
         write(*argv[2:])
     elif cmd == "read" and len(argv) == 6:
         read(*argv[2:])
+    elif cmd == "room-bytes" and len(argv) == 4:
+        room_bytes(argv[2], argv[3])
+    elif cmd == "room" and len(argv) == 6:
+        room(*argv[2:])
+    elif cmd == "room-read" and len(argv) == 6:
+        room_read(*argv[2:])
     elif cmd == "verdict" and len(argv) == 5:
         verdict(*argv[2:])
     elif cmd == "index" and len(argv) == 4:

@@ -49,7 +49,8 @@ container is accepted where every check passes:
   for a container expected to warn of that, and that a device node's number
   is zero, once for each device node it states numbered zero, which
   `fsck_apfs` warns of on the containers macOS writes too;
-- the listing is the one images.json states;
+- the listing is the one images.json states, each volume with the role it is
+  stated with, or none;
 - every volume mounts read-only, `diskutil info` reports its name, its
   identifier, its kind of name and its block size, and its root directory's
   owner, mode, flags and four times are as stated. A volume images.json
@@ -311,8 +312,11 @@ def listing(acc, out, name, listing_path, container):
                     shortened.append(slot)
                 else:
                     problems.append("slot %d: name %s, stated %s" % (slot, name_bytes.hex(), want["name_hex"]))
-            if got.get("Roles"):
-                problems.append("slot %d: roles %s, stated none" % (slot, got.get("Roles")))
+            role = want.get("role") or 0
+            stated_roles = [ROLE_WORDS.get(role, str(role))] if role else []
+            if (got.get("Roles") or []) != stated_roles:
+                problems.append("slot %d: roles %s, stated %s"
+                                % (slot, got.get("Roles"), stated_roles or "none"))
             if got.get("Encryption") or got.get("FileVault") or got.get("Locked"):
                 problems.append("slot %d: encrypted or locked" % slot)
         stated_uuids = {v["uuid"] for v in image["volumes"]}

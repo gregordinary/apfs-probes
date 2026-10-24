@@ -265,14 +265,14 @@ def sweep(base, out, budget, part=None):
     work = tempfile.mkdtemp(prefix="purgeable.", dir=os.environ.get("RUNNER_TEMP"))
     img = os.path.join(work, "try.img")
     tries = open(os.path.join(out, "tries.jsonl"), "w")
-    held = open(os.path.join(out, "health.jsonl"), "w")
+    health_log = open(os.path.join(out, "health.jsonl"), "w")
     count = 0
     began = time.time()
 
     def record():
         h = health(work, count, began)
-        held.write(json.dumps(h) + "\n")
-        held.flush()
+        health_log.write(json.dumps(h) + "\n")
+        health_log.flush()
         print("health " + json.dumps(h), flush=True)
 
     def attempt(n, off, mask):
@@ -333,7 +333,7 @@ def sweep(base, out, budget, part=None):
             pending += [part[half:], part[:half]]
     record()
     tries.close()
-    held.close()
+    health_log.close()
     shutil.rmtree(work, ignore_errors=True)
     summary = {"unchanged": unchanged, "unchanged_again_same": unchanged == again,
                "slice": "%d/%d" % part if part else None,

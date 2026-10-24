@@ -1,0 +1,8 @@
+{
+ "recipe": {
+  "flags": 8388608,
+  "attributes": {
+   "com.apple.fs.firmlink": "second+nul"
+  }
+ }
+}

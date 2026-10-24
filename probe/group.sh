@@ -2,10 +2,12 @@
 # What macOS writes when it makes a System and Data volume group, and how a
 # firmlink is kept.
 #
-#   firmlinks  grouputil.py firmlinks, as root: the shape of
-#              /usr/share/firmlinks and how the directories it names are
-#              kept, as counts and flag values alone, and the recipe drawn
-#              from them (log/firmlinks.json).
+#   firmlinks  grouputil.py firmlinks, as root, after the group stages: the
+#              shape of /usr/share/firmlinks and how the directories it names
+#              are kept, as counts and flag values alone, and the recipe drawn
+#              from them (log/firmlinks.json). It comes last because its
+#              second mount of the system's root leaves hdiutil attach
+#              reporting no disk.
 #   group      one container in a sparse 4 GiB file through three stages,
 #              each in one attach of the image and each ending in fsck_apfs
 #              -n -W and a dump:
@@ -21,7 +23,10 @@
 #                         private/tmp and Users with a file in each; System is
 #                         given the directories fl-a and fl-b, fl-a kept as a
 #                         firmlink to Data's Users by grouputil.py mark with
-#                         the recipe, fl-b left plain. grouputil.py marks reads
+#                         firmlink-recipe.json, the recipe firmlinks drew on
+#                         macOS 27: the flag 0x800000 and the attribute
+#                         com.apple.fs.firmlink holding the target and a NUL.
+#                         fl-b is left plain. grouputil.py marks reads
 #                         both back.
 #                again    both volumes mounted again, read-only and then
 #                         read-write; the marks read back, a file written to
@@ -36,6 +41,7 @@
 . "$(dirname "$0")/lib.sh" "$1"
 shift
 GU="$HERE/grouputil.py"
+RECIPE="$HERE/firmlink-recipe.json"
 mkdir -p "$WORK/mnt"
 
 do_fl=""
@@ -79,12 +85,6 @@ step diskutil-apfs-usage 30 diskutil apfs
 step addvolume-usage 30 diskutil apfs addVolume
 started=$(date '+%Y-%m-%d %H:%M:%S')
 
-RECIPE="$OUT/log/firmlinks.json"
-if [ -n "$do_fl" ]; then
-    section firmlinks
-    sstep firmlinks 300 "$PY" "$GU" firmlinks "$RECIPE"
-    sudo -n chown "$(id -u)" "$RECIPE" 2>/dev/null
-fi
 
 if [ -n "$do_group" ]; then
     section group
@@ -165,7 +165,14 @@ if [ -n "$do_group" ]; then
     fi
 fi
 
+if [ -n "$do_fl" ]; then
+    section firmlinks
+    sstep firmlinks 300 "$PY" "$GU" firmlinks "$OUT/log/firmlinks.json"
+    sudo -n chown "$(id -u)" "$OUT/log/firmlinks.json" 2>/dev/null
+fi
+
 section done
+step mounts-end 30 mount
 sstep system-log 600 sh -c 'log show --start "$1" --style ndjson --predicate "$2" >"$3"' sh "$started" \
     'senderImagePath CONTAINS[c] "apfs" OR process == "diskutil" OR process == "fsck_apfs"' \
     "$OUT/system-log.ndjson"

@@ -350,20 +350,24 @@ runs past 35 minutes is given its limit by the `minutes` input:
   bits.
 
 - `group`: what macOS writes when it makes a System and Data volume group,
-  and how a firmlink is kept. `firmlinks` reads `/usr/share/firmlinks` and
-  the directories it names, at `/` and through the system's root mounted
+  and how a firmlink is kept. `group` makes an empty container with
+  `diskutil apfs createContainer`, adds a Data volume with the data role and
+  then a System volume with the system role grouped with it, the order
+  `diskutil` takes, gives Data a few directories and files and System two
+  directories, one kept as a firmlink to Data's `Users` with
+  `probe/firmlink-recipe.json` and one left plain, and mounts both again. A
+  control container holds one volume added with no role. Each stage lists
+  the container, its volume groups and its volumes, and ends in `fsck_apfs
+  -n -W` and a dump. `firmlinks`, run after it, reads `/usr/share/firmlinks`
+  and the directories it names, at `/` and through the system's root mounted
   read-only on its own, and keeps only counts and flag values: the file's
   lines and fields, how many fields are absolute, the directories'
   `st_flags` beside those of `/bin`, the names of their `com.apple.fs.`
   attributes and how each value relates to its line's fields. No path or
-  value of the file is kept. `group` makes an empty container with `diskutil
-  apfs createContainer`, adds a Data volume with the data role and then a
-  System volume with the system role grouped with it, the order `diskutil`
-  takes, gives Data a few directories and files and System two directories,
-  one kept as a firmlink to Data's `Users` with what `firmlinks` found and
-  one left plain, and mounts both again. A control container holds one
-  volume added with no role. Each stage lists the container, its volume
-  groups and its volumes, and ends in `fsck_apfs -n -W` and a dump.
+  value of the file is kept. On macOS 27 every such directory read that way
+  holds the flag `0x800000` and an attribute `com.apple.fs.firmlink` holding
+  its line's second field and a NUL, which is the recipe
+  `firmlink-recipe.json` holds.
 
 ## What a run keeps
 

@@ -14,8 +14,10 @@
 #           describing the volume's snapshots changed a few bits at a time,
 #           each change attached, its volume mounted read-only and its
 #           snapshots listed, for at most MINUTES minutes (default 30).
+#           With slice K/N, the Kth of N runs of the words alone, so a sweep
+#           can be N dispatches and a runner lost costs one of them.
 #
-# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]]
+# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]] [slice K/N]
 #   with no argument, both.
 
 . "$(dirname "$0")/lib.sh" "$1"
@@ -27,12 +29,16 @@ mkdir -p "$WORK/mnt"
 do_tag=""
 do_sweep=""
 minutes=30
+part=()
 [ $# -eq 0 ] && do_tag=1 && do_sweep=1
 while [ $# -gt 0 ]; do
     case "$1" in
         tag) do_tag=1 ;;
         sweep) do_sweep=1
             if [[ ${2-} =~ ^[0-9]+$ ]]; then minutes=$2; shift; fi ;;
+        slice)
+            [[ ${2-} =~ ^[0-9]+/[0-9]+$ ]] || { echo "slice takes K/N" >&2; exit 2; }
+            part=(--slice "$2"); shift ;;
         *) echo "unknown argument $1" >&2; exit 2 ;;
     esac
     shift
@@ -98,7 +104,7 @@ if [ -n "$do_sweep" ]; then
     if step sweep-verify 300 "$PY" "$AU" verify "$ACC" root-ramdisk &&
         step sweep-restore 300 "$PY" "$ROOT/tools/blockdump.py" restore "$ACC/root-ramdisk.bd" "$img"; then
         step sweep $((minutes * 60 + 1800)) "$PY" "$HERE/purgeableutil.py" sweep "$img" \
-            "$OUT/sweep" --budget $((minutes * 60))
+            "$OUT/sweep" --budget $((minutes * 60)) ${part[@]+"${part[@]}"}
         rm -f "$img"
     fi
 fi

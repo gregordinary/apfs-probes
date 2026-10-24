@@ -15,7 +15,7 @@ A probe that takes arguments gets them from the `args` input, and one that
 runs past 35 minutes is given its limit by the `minutes` input:
 
     gh workflow run probe.yml -f probe=mutate -f args='loaded 1/2' -f runners='["macos-15"]'
-    gh workflow run probe.yml -f probe=purgeable -f args='sweep 240' -f minutes=290
+    gh workflow run probe.yml -f probe=purgeable -f args='sweep 45 slice 3/8' -f minutes=60
 
 ## The probes
 
@@ -245,7 +245,13 @@ runs past 35 minutes is given its limit by the `minutes` input:
   `corpus` the four that hold a corpus volume, and `fit` the five sized to
   their tree; `root` runs the four named `root-`, each of whose volumes
   holds a snapshot of itself that it roots from: a root's shape, one named
-  with 255 bytes, the largest block size, and two volumes with one each.
+  with 255 bytes, the largest block size, and two volumes with one each;
+  `group` runs the four named `group-`, each a System and a Data volume
+  joined as a volume group, which `diskutil apfs listVolumeGroups` is to list
+  as one group under the Data volume's identifier, each volume by its
+  identifier and role: the System volume first with a root snapshot and
+  firmlinks, the Data volume first, the largest block size with firmlinks,
+  and both empty. Every container stated with no group is to list none.
   Each such snapshot is to be listed by `diskutil apfs listSnapshots` alone,
   by its name, identifier and transaction, as the one its volume roots to,
   and to mount read-only holding the volume as it was written, in the
@@ -347,7 +353,10 @@ runs past 35 minutes is given its limit by the `minutes` input:
   read-only and lists its snapshots. Every word is first inverted whole, and
   a word whose listing differs from the unchanged image's is split in halves
   down to the single bits that change it. `sweep/summary.json` names those
-  bits.
+  bits. `slice K/N` sweeps the Kth of N runs of consecutive words alone, so
+  a sweep is N dispatches and a runner lost costs one run of words; every 25
+  tries `sweep/health.jsonl` records the images attached, the disk nodes,
+  the mounts, the free space and the load.
 
 - `group`: what macOS writes when it makes a System and Data volume group,
   and how a firmlink is kept. `group` makes an empty container with

@@ -3,7 +3,7 @@
 and keep what `diskutil apfs listSnapshots` reports of each snapshot.
 
     purgeableutil.py words IMAGE
-    purgeableutil.py sweep IMAGE OUTDIR [--budget SECONDS]
+    purgeableutil.py sweep IMAGE OUTDIR [--budget SECONDS] [--slice K/N]
     purgeableutil.py words-of LIST.plist
 
 The image is read as 4096-byte blocks, and an object is recognised as
@@ -36,11 +36,18 @@ listed differently, then those where nothing could be listed, a word that held
 less than 65536 before one that held more. Neither pass takes a new word once
 --budget seconds have passed.
 
+--slice K/N sweeps the Kth of N runs of consecutive words, counted from 1, in
+the order words lists them, so the whole sweep is N jobs and a runner lost to
+one of them loses that run alone. Every 25 tries, and at the start and end,
+the sweep records what the runner holds: images attached, disk nodes, mounts,
+the free space where the tries are made, and the load.
+
 OUTDIR receives:
 
     words.tsv       the swept words
     tries.jsonl     one line per try: block, offset, mask, seconds, and what
                     was listed, as {"snapshots": [...]} or {"error": STAGE}
+    health.jsonl    what the runner held, every 25 tries
     summary.json    the unchanged image's listing, the number of words swept
                     and of tries, and every single-bit try whose listing
                     differs from the unchanged image's
@@ -210,6 +217,26 @@ def listing_of(img, mnt):
         detach(dev)
 
 
+def health(work, count, started):
+    """What the runner holds after COUNT tries: a growing count across a run is
+    something the tries do not give back."""
+    out = {"tries": count, "seconds": round(time.time() - started)}
+    try:
+        r = run(["hdiutil", "info"])
+        out["attached"] = r.stdout.count(b"image-path")
+    except subprocess.TimeoutExpired:
+        out["attached"] = "timeout"
+    out["disk_nodes"] = len([d for d in os.listdir("/dev") if d.startswith("disk")])
+    try:
+        out["mounts"] = len(run(["mount"]).stdout.splitlines())
+    except subprocess.TimeoutExpired:
+        out["mounts"] = "timeout"
+    st = os.statvfs(work)
+    out["free_mb"] = st.f_bavail * st.f_frsize // (1 << 20)
+    out["load"] = round(os.getloadavg()[0], 2)
+    return out
+
+
 def changed_copy(base, img, n, off, mask):
     if os.path.exists(img):
         os.remove(img)
@@ -225,17 +252,28 @@ def changed_copy(base, img, n, off, mask):
             f.write(b)
 
 
-def sweep(base, out, budget):
+def sweep(base, out, budget, part=None):
     os.makedirs(out, exist_ok=True)
     ws = words(base)
     with open(os.path.join(out, "words.tsv"), "w") as f:
         f.write("block\toffset\tkind\n")
         for n, o, k in ws:
             f.write("%d\t%d\t%s\n" % (n, o, k))
+    if part:
+        k, parts = part
+        ws = ws[len(ws) * (k - 1) // parts:len(ws) * k // parts]
     work = tempfile.mkdtemp(prefix="purgeable.", dir=os.environ.get("RUNNER_TEMP"))
     img = os.path.join(work, "try.img")
     tries = open(os.path.join(out, "tries.jsonl"), "w")
+    held = open(os.path.join(out, "health.jsonl"), "w")
     count = 0
+    began = time.time()
+
+    def record():
+        h = health(work, count, began)
+        held.write(json.dumps(h) + "\n")
+        held.flush()
+        print("health " + json.dumps(h), flush=True)
 
     def attempt(n, off, mask):
         nonlocal count
@@ -246,7 +284,11 @@ def sweep(base, out, budget):
         tries.write(json.dumps({"block": n, "offset": off, "mask": mask,
                                 "seconds": round(time.time() - t0, 2), "listed": got}) + "\n")
         tries.flush()
+        if count % 25 == 0:
+            record()
         return got
+
+    record()
 
     unchanged = attempt(0, 0, 0)
     again = attempt(0, 0, 0)
@@ -289,9 +331,12 @@ def sweep(base, out, budget):
                 continue
             half = len(part) // 2
             pending += [part[half:], part[:half]]
+    record()
     tries.close()
+    held.close()
     shutil.rmtree(work, ignore_errors=True)
     summary = {"unchanged": unchanged, "unchanged_again_same": unchanged == again,
+               "slice": "%d/%d" % part if part else None,
                "words": len(ws), "words_differing_whole": len(whole), "words_split": split,
                "tries": count, "stopped": stopped,
                "seconds": round(time.time() - started), "differing_bits": differing}
@@ -305,13 +350,24 @@ def main(argv):
     if len(argv) == 3 and argv[1] == "words":
         for n, o, k in words(argv[2]):
             print("%d\t%d\t%s" % (n, o, k))
-    elif len(argv) in (4, 6) and argv[1] == "sweep":
+    elif len(argv) >= 4 and argv[1] == "sweep":
         budget = 3600.0
-        if len(argv) == 6:
-            if argv[4] != "--budget":
+        part = None
+        rest = argv[4:]
+        while rest:
+            if len(rest) < 2:
                 raise SystemExit(__doc__)
-            budget = float(argv[5])
-        sweep(argv[2], argv[3], budget)
+            if rest[0] == "--budget":
+                budget = float(rest[1])
+            elif rest[0] == "--slice":
+                m = re.fullmatch(r"([0-9]+)/([0-9]+)", rest[1])
+                if not m or not 1 <= int(m.group(1)) <= int(m.group(2)):
+                    raise SystemExit("--slice is K/N, with K from 1 to N")
+                part = (int(m.group(1)), int(m.group(2)))
+            else:
+                raise SystemExit(__doc__)
+            rest = rest[2:]
+        sweep(argv[2], argv[3], budget, part)
     elif len(argv) == 3 and argv[1] == "words-of":
         with open(argv[2], "rb") as f:
             print(json.dumps(listed(load_plist(f.read())), indent=1))

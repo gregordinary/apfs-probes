@@ -75,6 +75,12 @@ container is accepted where every check passes:
   snapshot is to hold the same. A volume stated with none lists none. What
   `diskutil` reports of a snapshot's other words, `Purgeable` among them, is
   recorded beside the verdict and not held.
+- `diskutil apfs listVolumeGroups` lists the container with the volume group
+  images.json states of it: one group, under the identifier its volumes
+  record, of exactly the volumes stated in it, each by its identifier with the
+  role stated (`System` for 0x1, `Data` for 0x40). A container stated with no
+  group lists none. What `diskutil info` reports of each volume's role is
+  recorded beside the verdict and not held.
 
 `snapshot-name` prints the name of the root snapshot images.json states for
 the volume `diskutil info` reported in INFO.plist, and exits 1 for a volume
@@ -187,6 +193,8 @@ def select(acc, words):
             want += [n for n in names if n.startswith("fit-")]
         elif w == "root":
             want += [n for n in names if n.startswith("root-")]
+        elif w == "group":
+            want += [n for n in names if n.startswith("group-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:
@@ -716,6 +724,43 @@ def snapshot_checks(image, out, name, phase, k, problems, observed):
               if want.get("entries") is not None else {})
 
 
+NO_GROUP = "00000000-0000-0000-0000-000000000000"
+ROLE_WORDS = {0x1: "System", 0x40: "Data"}
+
+
+def group_checks(image, out, name, problems, observed):
+    """The container's volume groups as `diskutil apfs listVolumeGroups` lists
+    them in the ro pass, held to the group images.json states."""
+    stated_groups = {}
+    for v in image["volumes"]:
+        g = v.get("volume_group") or NO_GROUP
+        if g != NO_GROUP:
+            stated_groups.setdefault(g, []).append(v)
+    try:
+        found = plist(os.path.join(out, "log", name + "-ro-groups.out"))
+    except (OSError, ValueError):
+        problems.append("volume groups: not listed")
+        return
+    mine = [c for c in found.get("Containers", [])
+            if c.get("APFSContainerUUID") == image["container_uuid"]]
+    if len(mine) != 1:
+        problems.append("volume groups: the container is listed %d times" % len(mine))
+        return
+    groups = mine[0].get("VolumeGroups", [])
+    observed["volume groups"] = groups
+    listed = {g.get("APFSVolumeGroupUUID"): g for g in groups}
+    if set(listed) != set(stated_groups):
+        problems.append("volume groups: listed %s, stated %s"
+                        % (sorted(listed), sorted(stated_groups)))
+        return
+    for uuid, members in stated_groups.items():
+        got = sorted((m.get("DiskUUID"), m.get("Role")) for m in listed[uuid].get("Volumes", []))
+        want = sorted((v["uuid"], ROLE_WORDS.get(v.get("role"), str(v.get("role"))))
+                      for v in members)
+        if got != want:
+            problems.append("volume group %s: lists %s, stated %s" % (uuid, got, want))
+
+
 def volume_checks(image, out, name, k, problems, observed):
     """The read-only pass's checks of the K-th volume listed; returns its slot."""
     p = "%s-ro-v%d" % (name, k)
@@ -747,6 +792,9 @@ def volume_checks(image, out, name, k, problems, observed):
         problems.append("%s: kind %s" % (tag, kind))
     if info.get("VolumeAllocationBlockSize") != image["block_size"]:
         problems.append("%s: block size %s" % (tag, info.get("VolumeAllocationBlockSize")))
+    roles = {key: value for key, value in info.items() if "Role" in key}
+    if roles:
+        observed.setdefault("roles", {})[str(slot)] = roles
     held_tree(tag, os.path.join(out, "volumes", p + ".json"), want, problems,
               observed.setdefault(str(slot), {}) if want.get("entries") is not None else {})
     listed = checkseal_entries(os.path.join(out, "log", p + "-checkseal.out"))
@@ -829,6 +877,8 @@ def verdict(acc, out, name):
     full = image["expect"] == "full"
     room = room_of(image)
     slots = [volume_checks(image, out, name, k, problems, observed) for k in range(1, n + 1)]
+    if not image.get("control"):
+        group_checks(image, out, name, problems, observed)
     if any(v.get("snapshot") is not None for v in image["volumes"]):
         for phase in ("ro", "back"):
             for k in range(1, n + 1):

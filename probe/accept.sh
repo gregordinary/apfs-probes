@@ -22,6 +22,9 @@
 #   back    attached again, every volume mounted read-only and the file read
 #           back, and the room with it
 #
+# The ro pass lists the volume groups with diskutil apfs listVolumeGroups, and
+# the container is held to the group images.json states of it, or to none.
+#
 # In the ro and back passes every volume's snapshots are listed with diskutil
 # apfs listSnapshots, and the root snapshot images.json states of a volume is
 # mounted read-only beside it with mount_apfs -s and its entries recorded: in
@@ -31,12 +34,12 @@
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
 # kernel's APFS messages during the run are kept in system-log.ndjson.
 #
-# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | root | NAME...]
+# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | root | group | NAME...]
 #   with no argument, every container; few, those of at most five volumes;
 #   many, those of more; controls, the newfs_apfs containers; limits, those
 #   whose names begin limit-; trees, those whose names begin tree-; corpus,
 #   those whose names begin corpus-; fit, those whose names begin fit-; root,
-#   those whose names begin root-
+#   those whose names begin root-; group, those whose names begin group-
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift
@@ -88,6 +91,7 @@ pass_ro() {
     local n=$1 dev=$2 k=0 vdev p mnt
     list_named "$n-ro" "$dev" || return 1
     step "$n-listing" 60 "$PY" "$AU" listing "$ACC" "$OUT" "$n" "$OUT/log/$LIST.out" "$CONT"
+    step "$n-ro-groups" 60 diskutil apfs listVolumeGroups -plist
     for vdev in $(cat "$OUT/log/$n-listing.out"); do
         k=$((k + 1))
         p="$n-ro-v$k"

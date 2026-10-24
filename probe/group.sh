@@ -6,16 +6,16 @@
 #              /usr/share/firmlinks and how the directories it names are
 #              kept, as counts and flag values alone, and the recipe drawn
 #              from them (log/firmlinks.json).
-#   group      one 1 GiB container newfs_apfs formats with one volume,
-#              System, through three stages, each in one attach of the image
-#              and each ending in fsck_apfs -n -W and a dump:
-#                made     diskutil apfs changeVolumeRole gives System the
-#                         system role, or, where it refuses, diskutil apfs
-#                         addVolume adds a volume with that role; then
-#                         addVolume adds Data with the data role, grouped
-#                         with it (-groupWith). diskutil apfs list,
-#                         listVolumeGroups and info are recorded after each
-#                         step.
+#   group      one container in a sparse 4 GiB file through three stages,
+#              each in one attach of the image and each ending in fsck_apfs
+#              -n -W and a dump:
+#                made     diskutil apfs createContainer makes the container
+#                         on the attached disk, or, where it refuses,
+#                         newfs_apfs formats the file with a volume Base;
+#                         diskutil apfs addVolume adds System with the system
+#                         role, then Data with the data role, grouped with it
+#                         (-groupWith). diskutil apfs list, listVolumeGroups
+#                         and info are recorded after each step.
 #                marked   both volumes mounted. Data is given private/var,
 #                         private/tmp and Users with a file in each; System is
 #                         given the directories fl-a and fl-b, fl-a kept as a
@@ -83,12 +83,20 @@ fi
 
 if [ -n "$do_group" ]; then
     section group
-    if img=$(newfs_file grp 1g -v System) && DEV=$(attach_raw made "$img"); then
-        if list_named made-start "$DEV" && sys=$(volume_named "$LIST" "$CONT" System); then
-            if ! sstep made-role 60 diskutil apfs changeVolumeRole "$sys" S; then
-                sstep made-addsys 120 diskutil apfs addVolume "$CONT" APFS Sys -role S -nomount &&
-                    list_named made-addsys "$DEV" && sys=$(volume_named "$LIST" "$CONT" Sys)
-            fi
+    img="$WORK/grp.img"
+    if step grp-mkfile 30 mkfile -n 4g "$img" && DEV=$(attach_raw made "$img"); then
+        if sstep made-create 300 diskutil apfs createContainer "$DEV" &&
+            list_named made-created "$DEV"; then
+            :
+        else
+            detach made "$DEV"
+            rm -f "$img"
+            img=$(newfs_file grp 4g -v Base) && DEV=$(attach_raw made-newfs "$img") &&
+                list_named made-created "$DEV"
+        fi
+        if [ -n "${CONT-}" ] &&
+            sstep made-addsys 120 diskutil apfs addVolume "$CONT" APFS System -role S -nomount &&
+            list_named made-addsys "$DEV" && sys=$(volume_named "$LIST" "$CONT" System); then
             record made-role
             sstep made-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D \
                 -groupWith "$sys" -nomount
@@ -97,7 +105,7 @@ if [ -n "$do_group" ]; then
         end made "$img"
 
         if DEV=$(attach_raw marked "$img") && record marked-start; then
-            sys=$("$PY" "$HERE/disks.py" volumes "$OUT/log/$LIST.out" "$CONT" | awk -F'\t' '$2=="System"||$2=="Sys"{print $1; exit}')
+            sys=$("$PY" "$HERE/disks.py" volumes "$OUT/log/$LIST.out" "$CONT" | awk -F'\t' '$2=="System"{print $1; exit}')
             data=$(volume_named "$LIST" "$CONT" Data)
             smnt="$WORK/mnt/sys"
             dmnt="$WORK/mnt/data"
@@ -124,7 +132,7 @@ if [ -n "$do_group" ]; then
         fi
 
         if DEV=$(attach_raw again "$img") && record again-start; then
-            sys=$("$PY" "$HERE/disks.py" volumes "$OUT/log/$LIST.out" "$CONT" | awk -F'\t' '$2=="System"||$2=="Sys"{print $1; exit}')
+            sys=$("$PY" "$HERE/disks.py" volumes "$OUT/log/$LIST.out" "$CONT" | awk -F'\t' '$2=="System"{print $1; exit}')
             data=$(volume_named "$LIST" "$CONT" Data)
             smnt="$WORK/mnt/sys-again"
             dmnt="$WORK/mnt/data-again"

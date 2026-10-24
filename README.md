@@ -356,13 +356,13 @@ runs past 35 minutes is given its limit by the `minutes` input:
   lines and fields, how many fields are absolute, the directories'
   `st_flags` beside those of `/bin`, the names of their `com.apple.fs.`
   attributes and how each value relates to its line's fields. No path or
-  value of the file is kept. `group` gives the volume of a container
-  `newfs_apfs` formats the system role with `diskutil apfs
-  changeVolumeRole`, adds a Data volume with the data role grouped with it,
-  gives Data a few directories and files and System two directories, one
-  kept as a firmlink to Data's `Users` with what `firmlinks` found and one
-  left plain, and mounts both again. Each stage lists the container, its
-  volume groups and its volumes, and ends in `fsck_apfs -n -W` and a dump.
+  value of the file is kept. `group` makes an empty container with `diskutil
+  apfs createContainer` and adds a System volume with the system role and a
+  Data volume with the data role grouped with it, gives Data a few
+  directories and files and System two directories, one kept as a firmlink
+  to Data's `Users` with what `firmlinks` found and one left plain, and
+  mounts both again. Each stage lists the container, its volume groups and
+  its volumes, and ends in `fsck_apfs -n -W` and a dump.
 
 ## What a run keeps
 

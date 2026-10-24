@@ -34,6 +34,7 @@ step reported with its errno where it fails.
 `marks` prints DIR's st_flags and its extended attributes, values in hex.
 """
 
+import ctypes
 import errno
 import json
 import os
@@ -41,6 +42,55 @@ import plistlib
 import subprocess
 import sys
 import tempfile
+
+# listxattr(2), getxattr(2) and setxattr(2) as macOS declares them, each
+# taking an options word; XATTR_NOFOLLOW acts on a symbolic link itself.
+LIBC = ctypes.CDLL(None, use_errno=True)
+LIBC.listxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
+LIBC.listxattr.restype = ctypes.c_ssize_t
+LIBC.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t,
+                          ctypes.c_uint32, ctypes.c_int]
+LIBC.getxattr.restype = ctypes.c_ssize_t
+LIBC.setxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t,
+                          ctypes.c_uint32, ctypes.c_int]
+LIBC.setxattr.restype = ctypes.c_int
+XATTR_NOFOLLOW = 0x0001
+
+
+def _fail():
+    e = ctypes.get_errno()
+    raise OSError(e, os.strerror(e))
+
+
+def listxattr(path):
+    p = os.fsencode(path)
+    n = LIBC.listxattr(p, None, 0, XATTR_NOFOLLOW)
+    if n < 0:
+        _fail()
+    buf = ctypes.create_string_buffer(n)
+    n = LIBC.listxattr(p, buf, n, XATTR_NOFOLLOW)
+    if n < 0:
+        _fail()
+    return [x.decode("utf-8", "surrogateescape") for x in buf.raw[:n].split(b"\0") if x]
+
+
+def getxattr(path, name):
+    p, a = os.fsencode(path), name.encode("utf-8", "surrogateescape")
+    n = LIBC.getxattr(p, a, None, 0, 0, XATTR_NOFOLLOW)
+    if n < 0:
+        _fail()
+    buf = ctypes.create_string_buffer(max(n, 1))
+    n = LIBC.getxattr(p, a, buf, n, 0, XATTR_NOFOLLOW)
+    if n < 0:
+        _fail()
+    return buf.raw[:n]
+
+
+def setxattr(path, name, value):
+    if LIBC.setxattr(os.fsencode(path), name.encode("utf-8", "surrogateescape"), value,
+                     len(value), 0, XATTR_NOFOLLOW) != 0:
+        _fail()
+
 
 FIRMLINKS = "/usr/share/firmlinks"
 CONTROL = "/bin"
@@ -101,7 +151,7 @@ def directories(lines, root):
         found += 1
         flags[st.st_flags] = flags.get(st.st_flags, 0) + 1
         try:
-            attrs = os.listxattr(under(root, first), follow_symlinks=False)
+            attrs = listxattr(under(root, first))
         except OSError:
             attrs = []
         for a in attrs:
@@ -110,7 +160,7 @@ def directories(lines, root):
                 continue
             names[a] = names.get(a, 0) + 1
             try:
-                v = os.getxattr(under(root, first), a, follow_symlinks=False)
+                v = getxattr(under(root, first), a)
                 r = relation(v, first, second)
             except OSError as e:
                 r = "unreadable " + errno.errorcode.get(e.errno, str(e.errno))
@@ -218,7 +268,7 @@ def mark(d, target, recipe_path):
             report[a] = "no value for relation %s" % rel
             continue
         try:
-            os.setxattr(d, a, value, follow_symlinks=False)
+            setxattr(d, a, value)
             report[a] = "set"
         except OSError as e:
             report[a] = errno.errorcode.get(e.errno, str(e.errno))
@@ -237,9 +287,9 @@ def mark(d, target, recipe_path):
 def marks(d):
     st = os.lstat(d)
     out = {"st_flags": "%#x" % st.st_flags, "attributes": {}}
-    for a in os.listxattr(d, follow_symlinks=False):
+    for a in listxattr(d):
         try:
-            out["attributes"][a] = os.getxattr(d, a, follow_symlinks=False).hex()
+            out["attributes"][a] = getxattr(d, a).hex()
         except OSError as e:
             out["attributes"][a] = errno.errorcode.get(e.errno, str(e.errno))
     print(json.dumps(out, indent=1))

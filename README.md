@@ -343,10 +343,11 @@ runs past 35 minutes is given its limit by the `minutes` input:
   holding the snapshot's identifier, the object maps, and the root nodes of
   the trees of snapshots, of the object map's snapshots and of extent
   references. Each try inverts some bits of one 32-bit word, writes the
-  object's check words again, attaches the image unmounted and lists its
-  snapshots. Every word is first inverted whole, and a word whose listing
-  differs from the unchanged image's is split in halves down to the single
-  bits that change it. `sweep/summary.json` names those bits.
+  object's check words again, attaches the image, mounts its volume
+  read-only and lists its snapshots. Every word is first inverted whole, and
+  a word whose listing differs from the unchanged image's is split in halves
+  down to the single bits that change it. `sweep/summary.json` names those
+  bits.
 
 ## What a run keeps
 

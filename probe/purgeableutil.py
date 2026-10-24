@@ -25,10 +25,10 @@ passed over and the fields between a record's values are not.
 
 `sweep` makes tries. A try clones the image (`cp -c`), inverts the bits of a
 mask in one word of the clone, writes the object's check words again, attaches
-the clone without mounting it, and records what `diskutil apfs listSnapshots
--plist` lists for the first volume of its container. The first pass inverts
-all 32 bits of each word, the identifier object, the snapshot tree, the object
-map's snapshot tree and the snapshot's superblock first. The second pass
+the clone, mounts the first volume of its container read-only, and records
+what `diskutil apfs listSnapshots -plist` lists for that volume. The first
+pass inverts all 32 bits of each word, the identifier object, the snapshot
+tree, the object map's snapshot tree and the snapshot's superblock first. The second pass
 splits the mask of every word whose listing differed from the unchanged
 image's into two halves, tries each, and splits again each half whose listing
 differs, down to single bits. It takes first the words whose snapshots were
@@ -160,8 +160,9 @@ def detach(dev):
         pass
 
 
-def listing_of(img):
-    """What is listed for the first volume of the container in IMG."""
+def listing_of(img, mnt):
+    """What is listed for the first volume of the container in IMG, mounted
+    read-only at MNT."""
     try:
         r = run(["hdiutil", "attach", "-plist", "-nomount",
                  "-imagekey", "diskimage-class=CRawDiskImage", img], 120)
@@ -193,9 +194,15 @@ def listing_of(img):
             time.sleep(1)
         if vdev is None:
             return {"error": "no volume"}
+        os.makedirs(mnt, exist_ok=True)
+        r = run(["sudo", "-n", "diskutil", "mount", "readOnly", "nobrowse", "-mountPoint", mnt,
+                 vdev], 120)
+        if r.returncode != 0:
+            return {"error": "mount"}
         r = run(["diskutil", "apfs", "listSnapshots", "-plist", vdev])
         if r.returncode != 0:
-            return {"error": "listSnapshots", "text": r.stdout.decode("utf-8", "replace")[-400:]}
+            return {"error": "listSnapshots",
+                    "text": (r.stdout + r.stderr).decode("utf-8", "replace")[-400:]}
         return listed(load_plist(r.stdout))
     except subprocess.TimeoutExpired:
         return {"error": "timeout"}
@@ -234,7 +241,7 @@ def sweep(base, out, budget):
         nonlocal count
         t0 = time.time()
         changed_copy(base, img, n, off, mask)
-        got = listing_of(img)
+        got = listing_of(img, os.path.join(work, "mnt"))
         count += 1
         tries.write(json.dumps({"block": n, "offset": off, "mask": mask,
                                 "seconds": round(time.time() - t0, 2), "listed": got}) + "\n")

@@ -12,8 +12,8 @@
 #           dumped the same way.
 #   sweep   purgeableutil.py sweep over accept/root-ramdisk.bd: the objects
 #           describing the volume's snapshots changed a few bits at a time,
-#           each change attached unmounted and its snapshots listed, for at
-#           most MINUTES minutes (default 30).
+#           each change attached, its volume mounted read-only and its
+#           snapshots listed, for at most MINUTES minutes (default 30).
 #
 # Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]]
 #   with no argument, both.

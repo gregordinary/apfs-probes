@@ -197,7 +197,9 @@ def drawn(dirs):
 
 
 def under(root, path):
-    return os.path.join(root, path.lstrip(b"/").decode("utf-8", "surrogateescape"))
+    if isinstance(path, bytes):
+        path = path.decode("utf-8", "surrogateescape")
+    return os.path.join(root, path.lstrip("/"))
 
 
 def firmlinks(out):

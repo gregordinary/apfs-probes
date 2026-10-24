@@ -14,8 +14,13 @@
 #                         newfs_apfs formats the file with a volume Base;
 #                         diskutil apfs addVolume adds System with the system
 #                         role, then Data with the data role, grouped with it
-#                         (-groupWith). diskutil apfs list, listVolumeGroups
-#                         and info are recorded after each step.
+#                         (-groupWith); where that is refused, Data is added
+#                         as a sibling (-sibling), grouped with no role, and
+#                         grouped and mounted, in that order, until one is
+#                         taken. diskutil apfs list, listVolumeGroups and info
+#                         are recorded after each step. A second container
+#                         is made the other way round: Data first, then
+#                         System grouped with it.
 #                marked   both volumes mounted. Data is given private/var,
 #                         private/tmp and Users with a file in each; System is
 #                         given the directories fl-a and fl-b, fl-a kept as a
@@ -25,6 +30,9 @@
 #                again    both volumes mounted again, read-only and then
 #                         read-write; the marks read back, a file written to
 #                         Data, and the group listed once more.
+#
+# The messages of APFS, diskutil and fsck_apfs during the run are kept in
+# system-log.ndjson.
 #
 # Usage: group.sh OUTDIR [firmlinks] [group]
 #   with neither, both.
@@ -73,6 +81,7 @@ step uname 30 uname -a
 step runner-env 30 sh -c 'env | grep -E "^(ImageOS|ImageVersion|RUNNER_ARCH|RUNNER_LABEL)=" | sort'
 step diskutil-apfs-usage 30 diskutil apfs
 step addvolume-usage 30 diskutil apfs addVolume
+started=$(date '+%Y-%m-%d %H:%M:%S')
 
 RECIPE="$OUT/log/firmlinks.json"
 if [ -n "$do_fl" ]; then
@@ -99,10 +108,32 @@ if [ -n "$do_group" ]; then
             list_named made-addsys "$DEV" && sys=$(volume_named "$LIST" "$CONT" System); then
             record made-role
             sstep made-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D \
-                -groupWith "$sys" -nomount
+                -groupWith "$sys" -nomount ||
+                sstep made-adddata-sibling 120 diskutil apfs addVolume "$CONT" APFS Data \
+                    -role D -sibling "$sys" -nomount ||
+                sstep made-adddata-norole 120 diskutil apfs addVolume "$CONT" APFS Data \
+                    -groupWith "$sys" -nomount ||
+                sstep made-adddata-mounted 120 diskutil apfs addVolume "$CONT" APFS Data \
+                    -role D -groupWith "$sys"
             record made-data
         fi
         end made "$img"
+
+        # The other order, in a container of its own: Data first, then System
+        # grouped with it.
+        img2="$WORK/grp2.img"
+        if step rev-mkfile 30 mkfile -n 4g "$img2" && DEV=$(attach_raw rev "$img2"); then
+            if sstep rev-create 300 diskutil apfs createContainer "$DEV" &&
+                list_named rev-created "$DEV" &&
+                sstep rev-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D -nomount &&
+                list_named rev-adddata "$DEV" && d2=$(volume_named "$LIST" "$CONT" Data); then
+                sstep rev-addsys 120 diskutil apfs addVolume "$CONT" APFS System -role S \
+                    -groupWith "$d2" -nomount
+                record rev-made
+            fi
+            end rev "$img2"
+            rm -f "$img2"
+        fi
 
         if DEV=$(attach_raw marked "$img") && record marked-start; then
             sys=$("$PY" "$HERE/disks.py" volumes "$OUT/log/$LIST.out" "$CONT" | awk -F'\t' '$2=="System"{print $1; exit}')
@@ -154,3 +185,10 @@ if [ -n "$do_group" ]; then
         rm -f "$img"
     fi
 fi
+
+section done
+sstep system-log 600 sh -c 'log show --start "$1" --style ndjson --predicate "$2" >"$3"' sh "$started" \
+    'senderImagePath CONTAINS[c] "apfs" OR process == "diskutil" OR process == "fsck_apfs"' \
+    "$OUT/system-log.ndjson"
+sudo -n chown -R "$(id -u)" "$OUT" 2>/dev/null
+exit 0

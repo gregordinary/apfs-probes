@@ -349,6 +349,21 @@ runs past 35 minutes is given its limit by the `minutes` input:
   down to the single bits that change it. `sweep/summary.json` names those
   bits.
 
+- `group`: what macOS writes when it makes a System and Data volume group,
+  and how a firmlink is kept. `firmlinks` reads `/usr/share/firmlinks` and
+  the directories it names, at `/` and through the system's snapshot mounted
+  read-only on its own, and keeps only counts and flag values: the file's
+  lines and fields, how many fields are absolute, the directories'
+  `st_flags` beside those of `/bin`, the names of their `com.apple.fs.`
+  attributes and how each value relates to its line's fields. No path or
+  value of the file is kept. `group` gives the volume of a container
+  `newfs_apfs` formats the system role with `diskutil apfs
+  changeVolumeRole`, adds a Data volume with the data role grouped with it,
+  gives Data a few directories and files and System two directories, one
+  kept as a firmlink to Data's `Users` with what `firmlinks` found and one
+  left plain, and mounts both again. Each stage lists the container, its
+  volume groups and its volumes, and ends in `fsck_apfs -n -W` and a dump.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

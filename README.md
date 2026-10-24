@@ -11,9 +11,11 @@ each runner it is given:
 
     gh workflow run probe.yml -f probe=discover -f runners='["macos-15","macos-26"]'
 
-A probe that takes arguments gets them from the `args` input:
+A probe that takes arguments gets them from the `args` input, and one that
+runs past 35 minutes is given its limit by the `minutes` input:
 
     gh workflow run probe.yml -f probe=mutate -f args='loaded 1/2' -f runners='["macos-15"]'
+    gh workflow run probe.yml -f probe=purgeable -f args='sweep 240' -f minutes=290
 
 ## The probes
 
@@ -185,7 +187,7 @@ A probe that takes arguments gets them from the `args` input:
   events, and whether a virtual machine starts inside the runner.
 
 - `accept`: whether macOS accepts the containers another implementation
-  formats. `accept/` holds 62 containers that ferrosys's APFS writer
+  formats. `accept/` holds 66 containers that ferrosys's APFS writer
   formatted, each a block dump, and `images.json`, which states what macOS
   should report of each: the container's identifier and capacity, and every
   volume's name, identifier and kind of name, with its root directory's
@@ -241,7 +243,13 @@ A probe that takes arguments gets them from the `args` input:
   `controls` runs the three `newfs_apfs` containers, `limits` the
   seventeen that set a node limit, `trees` the eight that hold a tree,
   `corpus` the four that hold a corpus volume, and `fit` the five sized to
-  their tree. Of a populated volume, every
+  their tree; `root` runs the four named `root-`, each of whose volumes
+  holds a snapshot of itself that it roots from: a root's shape, one named
+  with 255 bytes, the largest block size, and two volumes with one each.
+  Each such snapshot is to be listed by `diskutil apfs listSnapshots` alone,
+  by its name, identifier and transaction, as the one its volume roots to,
+  and to mount read-only holding the volume as it was written, in the
+  read-only pass and again after the file is written. Of a populated volume, every
   entry is held by path to what is stated:
   its inode number, mode, owner, group, flags and four times; a file's link
   count, size and content, a link's target, a device's number, a
@@ -324,6 +332,21 @@ A probe that takes arguments gets them from the `args` input:
   and listed by `apfs_checkseal -q -v`; mounted read-write, an attribute set
   on every file and each one it holds set again; then checked and listed
   again, and dumped.
+
+- `purgeable`: where the `Purgeable` word `diskutil apfs listSnapshots`
+  reports of a snapshot comes from. `tag` asks `apfs_systemsnapshot`, as
+  root, to take a snapshot of a container `newfs_apfs` formats and to tag it
+  as the one to root from, and to tag the snapshot `accept/root-ramdisk.bd`
+  holds, listing the snapshots after each step and dumping both containers.
+  `sweep MINUTES` changes the objects that describe that container's
+  snapshot: its volume superblock and the snapshot's copy of it, the object
+  holding the snapshot's identifier, the object maps, and the root nodes of
+  the trees of snapshots, of the object map's snapshots and of extent
+  references. Each try inverts some bits of one 32-bit word, writes the
+  object's check words again, attaches the image unmounted and lists its
+  snapshots. Every word is first inverted whole, and a word whose listing
+  differs from the unchanged image's is split in halves down to the single
+  bits that change it. `sweep/summary.json` names those bits.
 
 ## What a run keeps
 

@@ -151,6 +151,19 @@ def mount_root_snapshot():
     return mnt, None, tries
 
 
+def unmount(mnt):
+    """Unmount MNT, by umount and else by diskutil, forcing as a last resort."""
+    for cmd in (["/sbin/umount", mnt], ["/usr/sbin/diskutil", "unmount", mnt],
+                ["/usr/sbin/diskutil", "unmount", "force", mnt]):
+        try:
+            if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              timeout=120).returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return False
+
+
 def directories(lines, root):
     """How the directories LINES name are kept, read under ROOT."""
     flags = {}
@@ -259,7 +272,7 @@ def firmlinks(out):
     views["snapshot"] = {"mounted": mounted, "route": route, "tries": tries}
     if mounted:
         views["snapshot"].update(directories(lines, mnt))
-        subprocess.run(["umount", mnt], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        unmount(mnt)
     if mnt:
         try:
             os.rmdir(mnt)

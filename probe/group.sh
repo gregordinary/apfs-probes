@@ -10,17 +10,13 @@
 #              each in one attach of the image and each ending in fsck_apfs
 #              -n -W and a dump:
 #                made     diskutil apfs createContainer makes the container
-#                         on the attached disk, or, where it refuses,
-#                         newfs_apfs formats the file with a volume Base;
-#                         diskutil apfs addVolume adds System with the system
-#                         role, then Data with the data role, grouped with it
-#                         (-groupWith); where that is refused, Data is added
-#                         as a sibling (-sibling), grouped with no role, and
-#                         grouped and mounted, in that order, until one is
-#                         taken. diskutil apfs list, listVolumeGroups and info
-#                         are recorded after each step. A second container
-#                         is made the other way round: Data first, then
-#                         System grouped with it.
+#                         on the attached disk; diskutil apfs addVolume adds
+#                         Data with the data role, then System with the system
+#                         role, grouped with it (-groupWith), the order
+#                         diskutil takes. diskutil apfs list, listVolumeGroups
+#                         and info are recorded after each step. A control
+#                         container is made the same way with one volume,
+#                         Plain, added with no role.
 #                marked   both volumes mounted. Data is given private/var,
 #                         private/tmp and Users with a file in each; System is
 #                         given the directories fl-a and fl-b, fl-a kept as a
@@ -95,43 +91,26 @@ if [ -n "$do_group" ]; then
     img="$WORK/grp.img"
     if step grp-mkfile 30 mkfile -n 4g "$img" && DEV=$(attach_raw made "$img"); then
         if sstep made-create 300 diskutil apfs createContainer "$DEV" &&
-            list_named made-created "$DEV"; then
-            :
-        else
-            detach made "$DEV"
-            rm -f "$img"
-            img=$(newfs_file grp 4g -v Base) && DEV=$(attach_raw made-newfs "$img") &&
-                list_named made-created "$DEV"
-        fi
-        if [ -n "${CONT-}" ] &&
-            sstep made-addsys 120 diskutil apfs addVolume "$CONT" APFS System -role S -nomount &&
-            list_named made-addsys "$DEV" && sys=$(volume_named "$LIST" "$CONT" System); then
-            record made-role
-            sstep made-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D \
-                -groupWith "$sys" -nomount ||
-                sstep made-adddata-sibling 120 diskutil apfs addVolume "$CONT" APFS Data \
-                    -role D -sibling "$sys" -nomount ||
-                sstep made-adddata-norole 120 diskutil apfs addVolume "$CONT" APFS Data \
-                    -groupWith "$sys" -nomount ||
-                sstep made-adddata-mounted 120 diskutil apfs addVolume "$CONT" APFS Data \
-                    -role D -groupWith "$sys"
+            list_named made-created "$DEV" &&
+            sstep made-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D -nomount &&
+            list_named made-adddata "$DEV" && data=$(volume_named "$LIST" "$CONT" Data); then
             record made-data
+            sstep made-addsys 120 diskutil apfs addVolume "$CONT" APFS System -role S \
+                -groupWith "$data" -nomount
+            record made-group
         fi
         end made "$img"
 
-        # The other order, in a container of its own: Data first, then System
-        # grouped with it.
-        img2="$WORK/grp2.img"
-        if step rev-mkfile 30 mkfile -n 4g "$img2" && DEV=$(attach_raw rev "$img2"); then
-            if sstep rev-create 300 diskutil apfs createContainer "$DEV" &&
-                list_named rev-created "$DEV" &&
-                sstep rev-adddata 120 diskutil apfs addVolume "$CONT" APFS Data -role D -nomount &&
-                list_named rev-adddata "$DEV" && d2=$(volume_named "$LIST" "$CONT" Data); then
-                sstep rev-addsys 120 diskutil apfs addVolume "$CONT" APFS System -role S \
-                    -groupWith "$d2" -nomount
-                record rev-made
-            fi
-            end rev "$img2"
+        # A control: a volume diskutil adds with no role to a container of its
+        # own, so what any added volume holds is told apart from what a group's
+        # volumes hold.
+        img2="$WORK/ctl.img"
+        if step ctl-mkfile 30 mkfile -n 4g "$img2" && DEV=$(attach_raw ctl "$img2"); then
+            sstep ctl-create 300 diskutil apfs createContainer "$DEV" &&
+                list_named ctl-created "$DEV" &&
+                sstep ctl-addvol 120 diskutil apfs addVolume "$CONT" APFS Plain -nomount &&
+                record ctl-made
+            end ctl "$img2"
             rm -f "$img2"
         fi
 

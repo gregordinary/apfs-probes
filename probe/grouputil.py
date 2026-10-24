@@ -9,10 +9,12 @@ any path, and the same kept on a directory of the probe's own.
 `firmlinks` reads /usr/share/firmlinks and the directories its lines name, and
 writes to OUT.json the file's shape and how those directories are kept,
 beside an ordinary directory of the system volume, /bin. The directories are
-read twice: at /, and through the snapshot the system roots from, mounted
-read-only in a directory of its own, where no firmlink is followed. Neither
-the device nor the snapshot is named in what is written: only whether that
-mount was made. Of the file: its
+read twice: at /, and through the system's root mounted read-only in a
+directory of its own, where no firmlink is followed: the snapshot it roots
+from by its own device or by name, or else the volume. Neither the device nor
+the snapshot is named in what is written: only the route taken and each try's
+exit status and output, with device names written as diskN and the snapshot's
+name as SNAPSHOT. Of the file: its
 number of lines, of blank lines and of lines beginning "#", the number of
 fields of each line split at a tab, how many first and second fields begin
 "/", and whether it ends with a newline. Of the directories: how many there
@@ -39,6 +41,7 @@ import errno
 import json
 import os
 import plistlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -108,32 +111,44 @@ def relation(value, first, second):
 
 
 def mount_root_snapshot():
-    """Mount the snapshot the system roots from read-only in a new directory:
-    (directory, whether it was mounted). Nothing about the device is kept."""
+    """Mount the system's root read-only in a new directory, trying the snapshot
+    it roots from by its own device, the snapshot by name on its volume, and
+    the volume itself: (directory, the route taken or None, each try's exit
+    status and output). Device names are written as diskN and the snapshot's
+    name as SNAPSHOT, so nothing about the device is kept."""
     try:
         r = subprocess.run(["diskutil", "info", "-plist", "/"], stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=60)
         info = plistlib.loads(r.stdout)
     except (subprocess.TimeoutExpired, ValueError, plistlib.InvalidFileException):
-        return None, False
-    dev = info.get("DeviceIdentifier")
+        return None, None, [{"route": "info", "status": "unreadable"}]
+    dev = info.get("DeviceIdentifier") or ""
     snap = info.get("APFSSnapshotName")
-    parent = info.get("APFSSnapshotParentDevice") or info.get("ParentWholeDisk")
+    vol = re.sub(r"s[0-9]+$", "", dev) if re.fullmatch(r"disk[0-9]+s[0-9]+s[0-9]+", dev) else dev
     if not dev:
-        return None, False
+        return None, None, [{"route": "info", "status": "no device"}]
     mnt = tempfile.mkdtemp(prefix="sysroot.")
-    tries = [["mount_apfs", "-o", "rdonly", "/dev/" + dev, mnt]]
-    if snap and parent:
-        tries.append(["mount_apfs", "-o", "rdonly", "-s", snap, "/dev/" + parent, mnt])
-    for cmd in tries:
+    routes = [("snapshot-device", ["mount_apfs", "-o", "rdonly", "/dev/" + dev, mnt])]
+    if snap:
+        routes.append(("snapshot-by-name", ["mount_apfs", "-o", "rdonly", "-s", snap,
+                                            "/dev/" + vol, mnt]))
+    routes.append(("volume", ["mount_apfs", "-o", "rdonly", "/dev/" + vol, mnt]))
+    tries = []
+    for route, cmd in routes:
         try:
-            r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                timeout=120)
         except subprocess.TimeoutExpired:
+            tries.append({"route": route, "status": "timeout"})
             continue
+        text = r.stdout.decode("utf-8", "replace")
+        if snap:
+            text = text.replace(snap, "SNAPSHOT")
+        text = re.sub(r"disk[0-9]+(s[0-9]+)*", "diskN", text.replace(mnt, "MNT"))
+        tries.append({"route": route, "status": r.returncode, "output": text[-300:]})
         if r.returncode == 0 and os.path.ismount(mnt):
-            return mnt, True
-    return mnt, False
+            return mnt, route, tries
+    return mnt, None, tries
 
 
 def directories(lines, root):
@@ -239,8 +254,9 @@ def firmlinks(out):
         shape["any_space"] = any(b" " in t for t in text)
 
     views = {"root": directories(lines, "/")}
-    mnt, mounted = mount_root_snapshot()
-    views["snapshot"] = {"mounted": mounted}
+    mnt, route, tries = mount_root_snapshot()
+    mounted = route is not None
+    views["snapshot"] = {"mounted": mounted, "route": route, "tries": tries}
     if mounted:
         views["snapshot"].update(directories(lines, mnt))
         subprocess.run(["umount", mnt], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -22,15 +22,21 @@
 #   back    attached again, every volume mounted read-only and the file read
 #           back, and the room with it
 #
+# In the ro and back passes every volume's snapshots are listed with diskutil
+# apfs listSnapshots, and the root snapshot images.json states of a volume is
+# mounted read-only beside it with mount_apfs -s and its entries recorded: in
+# back, after the file was written to the volume, it is to hold what it held.
+#
 # acceptutil.py verdict judges each container from its steps, and
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
 # kernel's APFS messages during the run are kept in system-log.ndjson.
 #
-# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | NAME...]
+# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | root | NAME...]
 #   with no argument, every container; few, those of at most five volumes;
 #   many, those of more; controls, the newfs_apfs containers; limits, those
 #   whose names begin limit-; trees, those whose names begin tree-; corpus,
-#   those whose names begin corpus-; fit, those whose names begin fit-
+#   those whose names begin corpus-; fit, those whose names begin fit-; root,
+#   those whose names begin root-
 
 . "$(dirname "$0")/lib.sh" "$1"
 shift
@@ -62,6 +68,21 @@ volume_uuid() {
     "$PY" "$HERE/disks.py" key "$OUT/log/$1.out" VolumeUUID
 }
 
+# snapshots N P VDEV : list the snapshots of volume VDEV, mounted as pass P,
+# and mount the root snapshot images.json states of it read-only beside it and
+# record its entries.
+snapshots() {
+    local n=$1 p=$2 vdev=$3 snap smnt
+    step "$p-snapshots" 60 diskutil apfs listSnapshots -plist "$vdev"
+    snap=$("$PY" "$AU" snapshot-name "$ACC" "$n" "$OUT/log/$p-info.out") || return 0
+    smnt="$WORK/mnt/$p-snap"
+    mkdir -p "$smnt"
+    if sstep "$p-snap-mount" 120 mount_apfs -o rdonly -s "$snap" "/dev/$vdev" "$smnt"; then
+        sstep "$p-snap-manifest" 300 "$PY" "$CU" manifest "$smnt" "$OUT/volumes/$p-snap.json"
+        sstep "$p-snap-unmount" 120 umount "$smnt"
+    fi
+}
+
 # pass_ro N DEV : list the container on DEV and check every volume read-only.
 pass_ro() {
     local n=$1 dev=$2 k=0 vdev p mnt
@@ -76,6 +97,7 @@ pass_ro() {
         step "$p-info" 60 diskutil info -plist "$vdev"
         sstep "$p-manifest" 300 "$PY" "$CU" manifest "$mnt" "$OUT/volumes/$p.json"
         sstep "$p-checkseal" 120 "$RES/apfs_checkseal" -q -v "/dev/$vdev"
+        snapshots "$n" "$p" "$vdev"
         unmount_vol "$p" "$vdev"
     done
 }
@@ -125,6 +147,7 @@ pass_back() {
         if uuid=$(volume_uuid "$p-info"); then
             sstep "$p-read" 120 "$PY" "$AU" read "$mnt" "$n" "$uuid" "$OUT/files/$p.json"
         fi
+        snapshots "$n" "$p" "$vdev"
         unmount_vol "$p" "$vdev"
     done
 }
@@ -191,6 +214,7 @@ step date 30 date -u '+%Y-%m-%dT%H:%M:%SZ %z'
 step python 30 "$PY" -c 'import sys; print(sys.version)'
 step apfs-fs-plist 30 plutil -p /System/Library/Filesystems/apfs.fs/Contents/Info.plist
 step apfs-kext-plist 30 plutil -p /System/Library/Extensions/apfs.kext/Contents/Info.plist
+step apfs-systemsnapshot-usage 30 "$RES/apfs_systemsnapshot"
 step images 30 "$PY" -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["made_by"]))' \
     "$ACC/images.json"
 started=$(date '+%Y-%m-%d %H:%M:%S')

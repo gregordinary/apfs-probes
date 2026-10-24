@@ -10,6 +10,7 @@
     acceptutil.py room-bytes ACCEPT NAME
     acceptutil.py room MNT NAME BYTES OUT.json
     acceptutil.py room-read MNT NAME BYTES OUT.json
+    acceptutil.py snapshot-name ACCEPT NAME INFO.plist
     acceptutil.py verdict ACCEPT OUT NAME
     acceptutil.py index ACCEPT OUT
 
@@ -23,7 +24,8 @@ at most five volumes; `many`, those of more; `controls`, the containers
 begin `limit-`; `trees`, those whose first volume holds a tree, whose names
 begin `tree-`; `corpus`, those whose first volume holds a corpus volume,
 whose names begin `corpus-`; `fit`, those sized to the tree they hold,
-whose names begin `fit-`; or names. `verify` checks a
+whose names begin `fit-`; `root`, those whose volumes have a root snapshot,
+whose names begin `root-`; or names. `verify` checks a
 dump against the digests images.json gives it. `control` records what a
 container `newfs_apfs` formatted should report, which is less than an image
 of accept/ states: its identifiers and times are the runner's.
@@ -63,7 +65,20 @@ container is accepted where every check passes:
   allocation and attributes the writer recorded;
 - every volume mounts read-write and takes a file, and after it is
   unmounted, `fsck_apfs -n -W` passes again as above;
-- mounted again, every volume reads the file back as written.
+- mounted again, every volume reads the file back as written;
+- each volume images.json states a root snapshot of is listed by `diskutil
+  apfs listSnapshots` with that snapshot alone, by its name, identifier and
+  transaction, as the one the volume roots to (`RootTo`); and the snapshot,
+  mounted read-only beside the volume, holds what the volume was stated to
+  hold, root directory and entries alike. Both hold in the read-only pass
+  and again after the file is written, when the volume holds more and the
+  snapshot is to hold the same. A volume stated with none lists none. What
+  `diskutil` reports of a snapshot's other words, `Purgeable` among them, is
+  recorded beside the verdict and not held.
+
+`snapshot-name` prints the name of the root snapshot images.json states for
+the volume `diskutil info` reported in INFO.plist, and exits 1 for a volume
+it states none of.
 
 A container images.json expects to take `room:BYTES` is held to every check
 `accept` holds a container to, and before the probe's file the runner's own
@@ -170,6 +185,8 @@ def select(acc, words):
             want += [n for n in names if n.startswith("corpus-")]
         elif w == "fit":
             want += [n for n in names if n.startswith("fit-")]
+        elif w == "root":
+            want += [n for n in names if n.startswith("root-")]
         elif w in names or w in CONTROLS:
             want.append(w)
         else:
@@ -608,6 +625,97 @@ def compare_entries(tag, found, stated, problems, observed):
                            "; ".join(wrong[:3])))
 
 
+def held_tree(tag, path, want, problems, observed):
+    """Hold the manifest at PATH of a mounted volume, or of a snapshot of one,
+    to the tree images.json states of the volume WANT: its root directory, and
+    the entries it states or, where it states none, nothing beside the root."""
+    try:
+        entries = read_json(path)
+    except OSError:
+        problems.append("%s: no listing of the mounted volume" % tag)
+        return
+    if entries.get("errors"):
+        problems.append("%s: listing errors %s" % (tag, entries["errors"]))
+    root = next((e for e in entries["entries"] if e["path_hex"] == ""), None)
+    others = [e["path_hex"] for e in entries["entries"] if e["path_hex"] != ""]
+    if want.get("entries") is not None:
+        compare_entries(tag, entries["entries"], want["entries"], problems, observed)
+    if root is None:
+        problems.append("%s: no root directory" % tag)
+        return
+    if want.get("entries") is None and root.get("children_hex"):
+        problems.append("%s: root holds %s" % (tag, root["children_hex"]))
+    if want.get("entries") is None and others:
+        problems.append("%s: entries %s" % (tag, others))
+    stated_root = want["root"]
+    if stated_root is not None:
+        for field in ("uid", "gid", "mode", "flags", "atime_ns", "mtime_ns", "ctime_ns",
+                      "birthtime_ns"):
+            if root.get(field) != stated_root[field]:
+                problems.append("%s: root %s %s, stated %s"
+                                % (tag, field, root.get(field), stated_root[field]))
+
+
+def stated_volume(image, info_path):
+    """The volume images.json states whose identifier `diskutil info` reported
+    in INFO_PATH, or None."""
+    try:
+        info = plist(info_path)
+    except (OSError, ValueError):
+        return None
+    return next((v for v in image["volumes"]
+                 if v["uuid"] is not None and v["uuid"] == info.get("VolumeUUID")), None)
+
+
+def snapshot_name(acc, name, info_path):
+    want = stated_volume(stated(acc, None, name), info_path)
+    if want is None or want.get("snapshot") is None:
+        raise SystemExit(1)
+    print(want["snapshot"]["name"])
+
+
+# The words `diskutil apfs listSnapshots` reports of a snapshot that are
+# recorded and not held.
+SNAPSHOT_WORDS = ("Purgeable", "LimitingContainerShrink", "RevertTo")
+
+
+def snapshot_checks(image, out, name, phase, k, problems, observed):
+    """The checks of PHASE's pass of the K-th volume: the snapshots it lists,
+    and the root snapshot images.json states of it, mounted beside it."""
+    p = "%s-%s-v%d" % (name, phase, k)
+    status = steps(out)
+    want = stated_volume(image, os.path.join(out, "log", p + "-info.out"))
+    if want is None:
+        return
+    snap = want.get("snapshot")
+    tag = "%s slot %d snapshots" % (p, want["slot"])
+    try:
+        listed = plist(os.path.join(out, "log", p + "-snapshots.out")).get("Snapshots", [])
+    except (OSError, ValueError):
+        problems.append("%s: not listed" % tag)
+        return
+    if snap is None:
+        if listed:
+            problems.append("%s: %d listed, stated none" % (tag, len(listed)))
+        return
+    if len(listed) != 1:
+        problems.append("%s: %d listed, stated one" % (tag, len(listed)))
+    for got in listed[:1]:
+        found = (got.get("SnapshotName"), got.get("SnapshotUUID"), got.get("SnapshotXID"),
+                 got.get("RootTo"))
+        if found != (snap["name"], snap["uuid"], snap["xid"], True):
+            problems.append("%s: listed as %s, stated %s" % (
+                tag, found, (snap["name"], snap["uuid"], snap["xid"], True)))
+        observed.setdefault("snapshot words", {})[p] = {w: got.get(w) for w in SNAPSHOT_WORDS}
+    if status.get(p + "-snap-mount") != 0:
+        problems.append("%s: the snapshot's read-only mount failed" % tag)
+        return
+    held_tree("%s slot %d snapshot" % (p, want["slot"]),
+              os.path.join(out, "volumes", p + "-snap.json"), want, problems,
+              observed.setdefault("%d snapshot %s" % (want["slot"], phase), {})
+              if want.get("entries") is not None else {})
+
+
 def volume_checks(image, out, name, k, problems, observed):
     """The read-only pass's checks of the K-th volume listed; returns its slot."""
     p = "%s-ro-v%d" % (name, k)
@@ -639,33 +747,8 @@ def volume_checks(image, out, name, k, problems, observed):
         problems.append("%s: kind %s" % (tag, kind))
     if info.get("VolumeAllocationBlockSize") != image["block_size"]:
         problems.append("%s: block size %s" % (tag, info.get("VolumeAllocationBlockSize")))
-    try:
-        entries = read_json(os.path.join(out, "volumes", p + ".json"))
-    except OSError:
-        problems.append("%s: no listing of the mounted volume" % tag)
-        entries = None
-    if entries is not None:
-        if entries.get("errors"):
-            problems.append("%s: listing errors %s" % (tag, entries["errors"]))
-        root = next((e for e in entries["entries"] if e["path_hex"] == ""), None)
-        others = [e["path_hex"] for e in entries["entries"] if e["path_hex"] != ""]
-        if want.get("entries") is not None:
-            compare_entries(tag, entries["entries"], want["entries"], problems,
-                            observed.setdefault(str(slot), {}))
-        if root is None:
-            problems.append("%s: no root directory" % tag)
-        else:
-            if want.get("entries") is None and root.get("children_hex"):
-                problems.append("%s: root holds %s" % (tag, root["children_hex"]))
-            if want.get("entries") is None and others:
-                problems.append("%s: entries %s" % (tag, others))
-            stated_root = want["root"]
-            if stated_root is not None:
-                for field in ("uid", "gid", "mode", "flags", "atime_ns", "mtime_ns", "ctime_ns",
-                              "birthtime_ns"):
-                    if root.get(field) != stated_root[field]:
-                        problems.append("%s: root %s %s, stated %s"
-                                        % (tag, field, root.get(field), stated_root[field]))
+    held_tree(tag, os.path.join(out, "volumes", p + ".json"), want, problems,
+              observed.setdefault(str(slot), {}) if want.get("entries") is not None else {})
     listed = checkseal_entries(os.path.join(out, "log", p + "-checkseal.out"))
     if listed is None:
         problems.append("%s: apfs_checkseal did not run" % tag)
@@ -746,6 +829,10 @@ def verdict(acc, out, name):
     full = image["expect"] == "full"
     room = room_of(image)
     slots = [volume_checks(image, out, name, k, problems, observed) for k in range(1, n + 1)]
+    if any(v.get("snapshot") is not None for v in image["volumes"]):
+        for phase in ("ro", "back"):
+            for k in range(1, n + 1):
+                snapshot_checks(image, out, name, phase, k, problems, observed)
     if room is not None:
         took = record(out, "%s-rw-v1-room" % name)
         back = record(out, "%s-back-v1-room" % name)
@@ -854,6 +941,8 @@ def main(argv):
         room(*argv[2:])
     elif cmd == "room-read" and len(argv) == 6:
         room_read(*argv[2:])
+    elif cmd == "snapshot-name" and len(argv) == 5:
+        snapshot_name(*argv[2:])
     elif cmd == "verdict" and len(argv) == 5:
         verdict(*argv[2:])
     elif cmd == "index" and len(argv) == 4:

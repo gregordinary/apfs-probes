@@ -17,9 +17,12 @@
 #           With slice K/N, the Kth of N runs of the words alone, so a sweep
 #           can be N dispatches and a runner lost costs one of them. With
 #           unsplit, only the words probe/purgeable-unsplit.tsv lists: those an
-#           earlier sweep found changing the listing but did not split.
+#           earlier sweep found changing the listing but did not split. With
+#           words NAME, only those probe/purgeable-NAME.tsv lists:
+#           purgeable-snapflags.tsv is the word holding the high byte of the
+#           snapshot metadata record's flags, beside its name's length.
 #
-# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]] [unsplit] [slice K/N]
+# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]] [unsplit | words NAME] [slice K/N]
 #   with no argument, both.
 
 . "$(dirname "$0")/lib.sh" "$1"
@@ -40,6 +43,10 @@ while [ $# -gt 0 ]; do
         sweep) do_sweep=1
             if [[ ${2-} =~ ^[0-9]+$ ]]; then minutes=$2; shift; fi ;;
         unsplit) only=(--words "$HERE/purgeable-unsplit.tsv") ;;
+        words)
+            [[ ${2-} =~ ^[a-z0-9-]+$ && -f $HERE/purgeable-${2-}.tsv ]] ||
+                { echo "words takes NAME, for probe/purgeable-NAME.tsv" >&2; exit 2; }
+            only=(--words "$HERE/purgeable-$2.tsv"); shift ;;
         slice)
             [[ ${2-} =~ ^[0-9]+/[0-9]+$ ]] || { echo "slice takes K/N" >&2; exit 2; }
             part=(--slice "$2"); shift ;;

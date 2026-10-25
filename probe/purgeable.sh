@@ -15,9 +15,11 @@
 #           each change attached, its volume mounted read-only and its
 #           snapshots listed, for at most MINUTES minutes (default 30).
 #           With slice K/N, the Kth of N runs of the words alone, so a sweep
-#           can be N dispatches and a runner lost costs one of them.
+#           can be N dispatches and a runner lost costs one of them. With
+#           unsplit, only the words probe/purgeable-unsplit.tsv lists: those an
+#           earlier sweep found changing the listing but did not split.
 #
-# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]] [slice K/N]
+# Usage: purgeable.sh OUTDIR [tag] [sweep [MINUTES]] [unsplit] [slice K/N]
 #   with no argument, both.
 
 . "$(dirname "$0")/lib.sh" "$1"
@@ -30,12 +32,14 @@ do_tag=""
 do_sweep=""
 minutes=30
 part=()
+only=()
 [ $# -eq 0 ] && do_tag=1 && do_sweep=1
 while [ $# -gt 0 ]; do
     case "$1" in
         tag) do_tag=1 ;;
         sweep) do_sweep=1
             if [[ ${2-} =~ ^[0-9]+$ ]]; then minutes=$2; shift; fi ;;
+        unsplit) only=(--words "$HERE/purgeable-unsplit.tsv") ;;
         slice)
             [[ ${2-} =~ ^[0-9]+/[0-9]+$ ]] || { echo "slice takes K/N" >&2; exit 2; }
             part=(--slice "$2"); shift ;;
@@ -104,7 +108,7 @@ if [ -n "$do_sweep" ]; then
     if step sweep-verify 300 "$PY" "$AU" verify "$ACC" root-ramdisk &&
         step sweep-restore 300 "$PY" "$ROOT/tools/blockdump.py" restore "$ACC/root-ramdisk.bd" "$img"; then
         step sweep $((minutes * 60 + 1800)) "$PY" "$HERE/purgeableutil.py" sweep "$img" \
-            "$OUT/sweep" --budget $((minutes * 60)) ${part[@]+"${part[@]}"}
+            "$OUT/sweep" --budget $((minutes * 60)) ${part[@]+"${part[@]}"} ${only[@]+"${only[@]}"}
         rm -f "$img"
     fi
 fi

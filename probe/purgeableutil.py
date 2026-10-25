@@ -3,7 +3,7 @@
 and keep what `diskutil apfs listSnapshots` reports of each snapshot.
 
     purgeableutil.py words IMAGE
-    purgeableutil.py sweep IMAGE OUTDIR [--budget SECONDS] [--slice K/N]
+    purgeableutil.py sweep IMAGE OUTDIR [--budget SECONDS] [--slice K/N] [--words FILE]
     purgeableutil.py words-of LIST.plist
 
 The image is read as 4096-byte blocks, and an object is recognised as
@@ -35,6 +35,9 @@ differs, down to single bits. It takes first the words whose snapshots were
 listed differently, then those where nothing could be listed, a word that held
 less than 65536 before one that held more. Neither pass takes a new word once
 --budget seconds have passed.
+
+--words FILE sweeps only the words FILE lists, a block and an offset a line
+after a header, such as those an earlier sweep found but did not split.
 
 --slice K/N sweeps the Kth of N runs of consecutive words, counted from 1, in
 the order words lists them, so the whole sweep is N jobs and a runner lost to
@@ -217,6 +220,27 @@ def listing_of(img, mnt):
         detach(dev)
 
 
+def leftovers(img):
+    """Force every disk still attached from IMG off: a try whose volume would not
+    mount can leave its image attached past `hdiutil detach`, and attached
+    images that pile up slow every later try until the runner is lost."""
+    try:
+        r = run(["hdiutil", "info", "-plist"])
+        found = load_plist(r.stdout).get("images", [])
+    except (subprocess.TimeoutExpired, ValueError):
+        return
+    for image in found:
+        if image.get("image-path") not in (img, os.path.realpath(img)):
+            continue
+        devs = sorted((e.get("dev-entry", "") for e in image.get("system-entities", [])),
+                      key=len)
+        for dev in devs[:1]:
+            try:
+                run(["hdiutil", "detach", "-force", dev])
+            except subprocess.TimeoutExpired:
+                pass
+
+
 def health(work, count, started):
     """What the runner holds after COUNT tries: a growing count across a run is
     something the tries do not give back."""
@@ -252,13 +276,15 @@ def changed_copy(base, img, n, off, mask):
             f.write(b)
 
 
-def sweep(base, out, budget, part=None):
+def sweep(base, out, budget, part=None, only=None):
     os.makedirs(out, exist_ok=True)
     ws = words(base)
     with open(os.path.join(out, "words.tsv"), "w") as f:
         f.write("block\toffset\tkind\n")
         for n, o, k in ws:
             f.write("%d\t%d\t%s\n" % (n, o, k))
+    if only is not None:
+        ws = [w for w in ws if (w[0], w[1]) in only]
     if part:
         k, parts = part
         ws = ws[len(ws) * (k - 1) // parts:len(ws) * k // parts]
@@ -280,6 +306,7 @@ def sweep(base, out, budget, part=None):
         t0 = time.time()
         changed_copy(base, img, n, off, mask)
         got = listing_of(img, os.path.join(work, "mnt"))
+        leftovers(img)
         count += 1
         tries.write(json.dumps({"block": n, "offset": off, "mask": mask,
                                 "seconds": round(time.time() - t0, 2), "listed": got}) + "\n")
@@ -321,16 +348,16 @@ def sweep(base, out, budget, part=None):
         bits = list(range(32))
         pending = [bits[16:], bits[:16]]
         while pending:
-            part = pending.pop()
-            mask = sum(1 << i for i in part)
+            group = pending.pop()
+            mask = sum(1 << i for i in group)
             got = attempt(n, off, mask)
             if got == unchanged:
                 continue
-            if len(part) == 1:
-                differing.append({"block": n, "offset": off, "bit": part[0], "listed": got})
+            if len(group) == 1:
+                differing.append({"block": n, "offset": off, "bit": group[0], "listed": got})
                 continue
-            half = len(part) // 2
-            pending += [part[half:], part[:half]]
+            half = len(group) // 2
+            pending += [group[half:], group[:half]]
     record()
     tries.close()
     health_log.close()
@@ -353,6 +380,7 @@ def main(argv):
     elif len(argv) >= 4 and argv[1] == "sweep":
         budget = 3600.0
         part = None
+        only = None
         rest = argv[4:]
         while rest:
             if len(rest) < 2:
@@ -364,10 +392,14 @@ def main(argv):
                 if not m or not 1 <= int(m.group(1)) <= int(m.group(2)):
                     raise SystemExit("--slice is K/N, with K from 1 to N")
                 part = (int(m.group(1)), int(m.group(2)))
+            elif rest[0] == "--words":
+                with open(rest[1]) as f:
+                    only = {tuple(int(v) for v in line.split("\t")[:2])
+                            for line in f.read().splitlines()[1:] if line.strip()}
             else:
                 raise SystemExit(__doc__)
             rest = rest[2:]
-        sweep(argv[2], argv[3], budget, part)
+        sweep(argv[2], argv[3], budget, part, only)
     elif len(argv) == 3 and argv[1] == "words-of":
         with open(argv[2], "rb") as f:
             print(json.dumps(listed(load_plist(f.read())), indent=1))

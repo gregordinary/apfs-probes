@@ -390,6 +390,14 @@ runs past 35 minutes is given its limit by the `minutes` input:
   formatted, three with the same kinds of attribute and a control, each
   checked, listed, written and listed again as `xattrnames` does its own.
 
+- `firmflags`: how the runner's own system volume keeps its firmlinks on
+  disk. The volume's file-system tree is read from the container's raw
+  device, and for each record of the attribute `com.apple.fs.firmlink` the
+  probe keeps its flags word and where its value is held, and the inode
+  flags of the directory carrying it, beside the same words for every other
+  directory and attribute. Only counts and flag values are kept: no path,
+  name, value, device or identifier.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

@@ -71,6 +71,7 @@ APFS_VOL_UUID = 240
 APFS_FS_FLAGS = 264
 APFS_ROLE = 964
 APFS_INTEGRITY_META_OID = 1024
+APFS_FEXT_TREE_OID = 1032
 APFS_VOL_ROLE_SYSTEM = 0x0001
 
 # btree_node_phys_t (p. 123) and btree_info_t (p. 126).
@@ -420,6 +421,10 @@ def read_volume(reader, sb, seconds):
         return out
     out["tree_flags"] = "%#x" % node.info()[0]
     out["root_node"] = {"flags": "%#x" % node.flags, "level": node.level, "keys": node.nkeys}
+    child_resolve = None if physical else resolve
+    if node.info()[0] & BTREE_HASHED:
+        out["hash_type"] = hash_type(reader, sb, resolve)
+        reader.hash_name = HASHES.get(out["hash_type"], "sha256")
     if not node.leaf:
         # The root's index entries as numbers alone: each key's length and
         # record type, and each value's length and its first word.
@@ -449,6 +454,17 @@ def read_volume(reader, sb, seconds):
             bump(relations["oid minus stored"], str(hit[0] - stored))
             bump(relations["address minus stored"], str(hit[1] - stored))
         out["root_children_by_hash"] = relations
+        bases = [int(k) for k in relations["oid minus stored"]]
+        if len(bases) == 1:
+            base = bases[0]
+            # How the base relates to the identifiers the superblock holds.
+            out["child_base_minus"] = {
+                name: struct.unpack_from("<Q", sb, at)[0] - base
+                for name, at in (("root_tree_oid", APFS_ROOT_TREE_OID),
+                                 ("integrity_meta_oid", APFS_INTEGRITY_META_OID),
+                                 ("fext_tree_oid", APFS_FEXT_TREE_OID))}
+            out["child_base_minus"]["map_smallest"] = resolve.smallest() - base
+            child_resolve = (lambda stored, base=base: resolve(stored + base))
     out["tree_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
         "<QQ", node.block, len(node.block) - 16)))
     omap = reader.node(struct.unpack_from("<Q", sb, APFS_OMAP_OID)[0])
@@ -458,10 +474,6 @@ def read_volume(reader, sb, seconds):
             out["volume_map_smallest"] = resolve.smallest() if resolve else None
             out["volume_map_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
                 "<QQ", map_root.block, len(map_root.block) - 16)))
-    child_resolve = None if physical else resolve
-    if node.info()[0] & BTREE_HASHED:
-        out["hash_type"] = hash_type(reader, sb, resolve)
-        reader.hash_name = HASHES.get(out["hash_type"], "sha256")
 
     firm = {"inodes": 0, "record_flags": {}, "held": {}, "ends_with_nul": {},
             "value_is_a_second_field": {}, "bsd_flags": {}, "internal_flags": {},

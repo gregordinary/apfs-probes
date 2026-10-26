@@ -1,0 +1,76 @@
+{
+ "images": [
+  {
+   "bytes": 33554432,
+   "content_sha256": "b7ecd67e2b16b348865078b470b7c41787f4bf4138d8a342b5a6b2fc6ac0e78a",
+   "dump": "edge-control.bd",
+   "image_sha256": "0e4f57700868cf816d4797ec5b3a2c3dc51bc085b07efb7f6d334ed6c653455e",
+   "name": "edge-control",
+   "paths": {
+    "/cdev": {},
+    "/fifo": {},
+    "/plain": {
+     "757365722e6b657074": "79f076abdd19a752db7267bfff2f9022161d120dea919fdaca2ffdfc24ca8c96"
+    }
+   }
+  },
+  {
+   "bytes": 33554432,
+   "content_sha256": "1f61bf800f5d9e929506a8a7ce1c3c04924e84d4a5a6848e60b3e150c5a71bfa",
+   "dump": "edge-devattr.bd",
+   "image_sha256": "6a1bcb83c030290832af176b925352a32fd2c1e7df1907f5961eb2b9c7a636ea",
+   "name": "edge-devattr",
+   "paths": {
+    "/bdev": {
+     "757365722e62": "aad63a5297d06031f202f113110af50b3305cd65fb656b215fb759149963e75f"
+    },
+    "/cdev": {
+     "757365722e61": "06244557ed8f075aadf3bac769e3a64a0694f259be7d58a6a60150cd7ee7a1a8"
+    },
+    "/fifo": {
+     "757365722e63": "4ef69e7672ad9756d4d3bc7e73416b5fd3d698ebf7f22f53070ae5a70fa1e2c7"
+    },
+    "/plain": {
+     "757365722e6b657074": "79f076abdd19a752db7267bfff2f9022161d120dea919fdaca2ffdfc24ca8c96"
+    }
+   }
+  },
+  {
+   "bytes": 33554432,
+   "content_sha256": "27ee061f7a28fcabe9740bff0ae5dac030563098c6ed1febc223f0f0adf0446e",
+   "dump": "edge-namebytes.bd",
+   "image_sha256": "6688833e9c542abbcb9fbde8b2e3cd1cb2dd240a7d5893bb45a98469d998aad6",
+   "name": "edge-namebytes",
+   "paths": {
+    "/f": {
+     "757365722efffe": "f8d4dd2ee48bc2341567d11905195fde23f9a5af75c9c264ce808778d11fe1b6"
+    },
+    "/g": {
+     "757365722ee974e9": "7bff9594f61de47666af2363264b90c179535b22a66c806354f0fe7712a4d32e"
+    },
+    "/plain": {
+     "757365722e6b657074": "79f076abdd19a752db7267bfff2f9022161d120dea919fdaca2ffdfc24ca8c96"
+    }
+   }
+  },
+  {
+   "bytes": 33554432,
+   "content_sha256": "3b715cbd8ad95256a6b2725873ec26190943b71d1eac8fcb49ed10f8b9d8cd6d",
+   "dump": "edge-emptyfork.bd",
+   "image_sha256": "4e4b7e42d606476bf540cc1b73b1e421e567c095d8ede8380f402d5d5926cc61",
+   "name": "edge-emptyfork",
+   "paths": {
+    "/e": {
+     "636f6d2e6170706c652e5265736f75726365466f726b": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/n": {
+     "636f6d2e6170706c652e5265736f75726365466f726b": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    "/plain": {
+     "757365722e6b657074": "79f076abdd19a752db7267bfff2f9022161d120dea919fdaca2ffdfc24ca8c96"
+    }
+   }
+  }
+ ],
+ "made_by": "ferrosys APFS writer, 32 MiB containers at 4 KiB blocks, one volume named Edge, owner 0:0, time 1700000000"
+}

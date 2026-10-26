@@ -378,6 +378,18 @@ runs past 35 minutes is given its limit by the `minutes` input:
   its line's second field and a NUL, which is the recipe
   `firmlink-recipe.json` holds.
 
+- `edges`: attributes in three places macOS may not keep them, and how
+  macOS's own compressor stores a chunk that does not compress. On a fresh
+  container `newfs_apfs` formats, an attribute is set on a character device,
+  a block device and a named pipe, attributes are given names that are not
+  UTF-8, and files are given resource forks of no bytes and of three, each
+  call recorded with what `listxattr` and `getxattr` then answer; files whose
+  64 KiB chunks mix text with bytes that do not compress are copied by
+  `ditto --hfsCompression`, and each is read back after the volume is
+  mounted again. `edges/` holds four containers ferrosys's APFS writer
+  formatted, three with the same kinds of attribute and a control, each
+  checked, listed, written and listed again as `xattrnames` does its own.
+
 ## What a run keeps
 
 Each runner's artifact, kept for seven days, holds:

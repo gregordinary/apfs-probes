@@ -157,29 +157,45 @@ class Reader:
         self.by_hash = 0
         self.hash_differs = 0
         self.unchecked = 0
+        self.ways = {}
 
-    def node(self, addr, hashed=None):
-        """The node at ADDR, checked by the hash its parent gives, HASHED, or
-        else by its checksum; None where that check fails twice."""
+    def node(self, addr):
+        """The node at ADDR, checked by its checksum, or None where that
+        fails twice. A node stored without a header has none to check."""
         self.read += 1
         for _ in range(2):
             # A live container moves on while it is read; a second read tells
             # a block caught mid-write from one that does not verify.
             block = self.img.block(addr)
-            if hashed is not None:
-                if hashlib.sha256(block).digest() == hashed[:SHA256_SIZE]:
-                    self.by_hash += 1
-                    return Node(block)
-            elif fletcher_ok(block):
+            if fletcher_ok(block):
                 return Node(block)
-            elif (struct.unpack_from("<H", block, 32)[0] & BTNODE_NOHEADER
-                  and block[:32] == bytes(32)):
+            if (struct.unpack_from("<H", block, 32)[0] & BTNODE_NOHEADER
+                    and block[:32] == bytes(32)):
                 self.unchecked += 1
                 return Node(block)
-        if hashed is not None:
-            self.hash_differs += 1
-        else:
-            self.failed += 1
+        self.failed += 1
+        return None
+
+    def hashed_child(self, oid, resolve, hashed):
+        """The child OID of a hashed tree's index node, found where its hash
+        HASHED matches: at the address the object map gives it, and else at
+        OID taken as an address. Which way it was found is counted."""
+        tries = []
+        if resolve is not None:
+            addr = resolve(oid)
+            tries.append(("mapped", addr) if addr is not None else ("unmapped", None))
+        tries.append(("as-address", oid))
+        for way, addr in tries:
+            if addr is None:
+                continue
+            block = self.img.block(addr)
+            self.read += 1
+            if hashlib.sha256(block).digest() == hashed[:SHA256_SIZE]:
+                self.by_hash += 1
+                bump(self.ways, way)
+                return Node(block)
+        self.hash_differs += 1
+        bump(self.ways, "+".join(w for w, _ in tries) + " differs")
         return None
 
 
@@ -234,10 +250,11 @@ def walk(reader, root_addr, resolve=None, first_key=None):
                 if i + 1 < len(entries) and of(entries[i + 1][0]) < want:
                     continue
             child = struct.unpack_from("<Q", value, 0)[0]
-            addr = resolve(child) if resolve else child
-            if addr is None:
-                continue
-            below = reader.node(addr, value[8:8 + SHA256_SIZE] if hashed else None)
+            if hashed:
+                below = reader.hashed_child(child, resolve, value[8:8 + SHA256_SIZE])
+            else:
+                addr = resolve(child) if resolve else child
+                below = None if addr is None else reader.node(addr)
             if below is not None:
                 yield from visit(below)
 
@@ -338,6 +355,7 @@ def read_volume(reader, sb, seconds):
         out["error"] = "root tree node does not verify"
         return out
     out["tree_flags"] = "%#x" % node.info()[0]
+    out["root_node"] = {"flags": "%#x" % node.flags, "level": node.level, "keys": node.nkeys}
     child_resolve = None if physical else resolve
 
     firm = {"inodes": 0, "record_flags": {}, "held": {}, "ends_with_nul": {},
@@ -457,7 +475,7 @@ def system(out_path):
         result["volume"] = read_volume(reader, chosen[0], seconds)
     result["nodes"] = {"read": reader.read, "failed": reader.failed,
                        "by_hash": reader.by_hash, "hash_differs": reader.hash_differs,
-                       "unchecked": reader.unchecked}
+                       "unchecked": reader.unchecked, "children_found": reader.ways}
     return finish(result, out_path)
 
 
@@ -474,7 +492,7 @@ def image(path, out_path):
         result["volume"] = read_volume(reader, chosen[0], None)
     result["nodes"] = {"read": reader.read, "failed": reader.failed,
                        "by_hash": reader.by_hash, "hash_differs": reader.hash_differs,
-                       "unchecked": reader.unchecked}
+                       "unchecked": reader.unchecked, "children_found": reader.ways}
     return finish(result, out_path)
 
 

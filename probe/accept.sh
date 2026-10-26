@@ -34,7 +34,11 @@
 # acceptutil.py index writes verdicts.json, with the release, at the end. The
 # kernel's APFS messages during the run are kept in system-log.ndjson.
 #
-# Usage: accept.sh OUTDIR [few | many | controls | limits | trees | corpus | fit | root | group | NAME...]
+# Usage: accept.sh OUTDIR [snapname] [few | many | controls | limits | trees | corpus | fit | root | group | NAME...]
+#   snapname first: the containers under snapname/ instead of accept/, every
+#   one of them, each a volume whose root snapshot's name is 255 bytes or
+#   longer, built by the writer with its bound on that length lifted, to ask
+#   macOS where the bound is;
 #   with no argument, every container; few, those of at most five volumes;
 #   many, those of more; controls, the newfs_apfs containers; limits, those
 #   whose names begin limit-; trees, those whose names begin tree-; corpus,
@@ -46,6 +50,10 @@ shift
 AU="$HERE/acceptutil.py"
 CU="$HERE/corpusutil.py"
 ACC="$ROOT/accept"
+if [ "${1:-}" = snapname ]; then
+    ACC="$ROOT/snapname"
+    set -- few
+fi
 mkdir -p "$WORK/mnt" "$OUT/volumes" "$OUT/files"
 
 # now N : the time, to the microsecond, a line of times/N: N's first and last

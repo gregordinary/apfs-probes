@@ -265,6 +265,12 @@ runs past 35 minutes is given its limit by the `minutes` input:
   inode, since it lists an inode of several names' attributes once. What
   macOS reports of a directory's link count and size, and of a file's
   blocks, is recorded beside the verdict.
+  The argument `snapname` runs the seven containers under `snapname/`
+  instead, through the same batch. Each holds one volume with a root
+  snapshot whose name is 255 bytes or longer: 255, 256, 300 and 1024 bytes
+  of ASCII, 255 and 256 bytes of a two-byte character, and 255 such
+  characters, 510 bytes. The writer refuses a name past 255 bytes, so these
+  were written with that bound lifted, to ask where macOS puts it.
 
 - `resize`: what a container records once `diskutil apfs resizeContainer`
   has resized it. Two sparse 64 GiB images are partitioned by `diskutil
@@ -397,6 +403,22 @@ runs past 35 minutes is given its limit by the `minutes` input:
   flags of the directory carrying it, beside the same words for every other
   directory and attribute. Only counts and flag values are kept: no path,
   name, value, device or identifier.
+
+- `sources`: three rules a reader relies on, each asked of macOS directly.
+  On a fresh container `newfs_apfs` formats, files are stored compressed with
+  their content after the header as the byte `0x06` then the content itself,
+  type 7, the form `ditto --hfsCompression` gives an LZVN chunk that does not
+  compress in the resource fork, beside type 7 holding an LZVN stream and type
+  3 holding `0xFF` and the content as controls, and forms whose header states
+  another size; each is read back through the kernel after a remount. Files
+  of known sizes are copied by `ditto --hfsCompression`, and the first 16
+  bytes of each one's `com.apple.decmpfs` attribute are kept beside its size,
+  so where the size sits is found by searching for it. `fs_snapshot_create`
+  is asked for snapshots named by 255, 256 and 1024 bytes. A second container
+  gets two volumes from `diskutil apfs addVolume`, one reserving 8 MiB and
+  written 40 MiB, one reserving 64 MiB and written 4 MiB, and is dumped, so
+  what its space manager counts as allocated from the reserves can be read.
+  Every file the probe writes is its own generated content.
 
 ## What a run keeps
 

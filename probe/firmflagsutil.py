@@ -181,7 +181,7 @@ class Reader:
         self.failed += 1
         return None
 
-    def hashed_child(self, oid, resolve, hashed, level):
+    def hashed_child(self, oid, resolve, hashed, level, value_bytes):
         """The child OID of a hashed tree's index node at LEVEL, found where
         its hash HASHED matches: at the address the object map gives it, and
         else at OID taken as an address. Which way it was found is counted,
@@ -209,6 +209,11 @@ class Reader:
         shaped = (block[:32] == bytes(32) and flags & BTNODE_NOHEADER and flags & BTNODE_HASHED
                   and below + 1 == level)
         bump(self.ways, "as-address shaped like the child: %s" % bool(shaped))
+        bump(self.ways, "as-address flags %#x level %d header zero %s checksum %s" % (
+            flags, below, block[:32] == bytes(32), fletcher_ok(block)))
+        bump(self.ways, "index value bytes %d" % value_bytes)
+        if resolve is not None and hasattr(resolve, "nearest"):
+            bump(self.ways, "nearest mapped identifier within %s" % resolve.nearest(oid))
         return None
 
 
@@ -264,7 +269,7 @@ def walk(reader, root_addr, resolve=None, first_key=None):
                     continue
             child = struct.unpack_from("<Q", value, 0)[0]
             if hashed:
-                below = reader.hashed_child(child, resolve, value[8:], node.level)
+                below = reader.hashed_child(child, resolve, value[8:], node.level, len(value))
             else:
                 addr = resolve(child) if resolve else child
                 below = None if addr is None else reader.node(addr)
@@ -296,6 +301,17 @@ def omap_lookup(reader, omap_addr, max_xid=None):
             cache[oid] = best[1] if best else None
         return cache[oid]
 
+    def nearest(oid):
+        """How far the nearest identifier the map holds lies from OID, as a
+        power of two bound."""
+        near = None
+        for key, _ in walk(reader, tree, first_key=(oid, lambda k: struct.unpack_from(
+                "<Q", k, 0)[0])):
+            d = abs(struct.unpack_from("<Q", key, 0)[0] - oid)
+            near = d if near is None else min(near, d)
+        return None if near is None else "2^%d" % near.bit_length()
+
+    resolve.nearest = nearest
     return resolve
 
 
@@ -383,6 +399,14 @@ def read_volume(reader, sb, seconds):
         return out
     out["tree_flags"] = "%#x" % node.info()[0]
     out["root_node"] = {"flags": "%#x" % node.flags, "level": node.level, "keys": node.nkeys}
+    out["tree_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
+        "<QQ", node.block, len(node.block) - 16)))
+    omap = reader.node(struct.unpack_from("<Q", sb, APFS_OMAP_OID)[0])
+    if omap is not None:
+        map_root = reader.node(struct.unpack_from("<Q", omap.block, 48)[0])
+        if map_root is not None:
+            out["volume_map_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
+                "<QQ", map_root.block, len(map_root.block) - 16)))
     child_resolve = None if physical else resolve
     if node.info()[0] & BTREE_HASHED:
         out["hash_type"] = hash_type(reader, sb, resolve)

@@ -67,7 +67,7 @@ section reserve
 if img=$(newfs_file reserve 4g -v Base); then
     if dev=$(attach_raw reserve "$img"); then
         if cont=$(container_of reserve-list "$dev"); then
-            sstep reserve-add-over 120 diskutil apfs addVolume "$cont" APFS Over -reserve 8m -nomount
+            sstep reserve-add-over 120 diskutil apfs addVolume "$cont" APFS Over -reserve 8388608B -nomount
             sstep reserve-add-under 120 diskutil apfs addVolume "$cont" APFS Under -reserve 64m -nomount
             if list_named reserve-added "$dev"; then
                 for v in Over:40 Under:4; do

@@ -11,7 +11,8 @@
 #            and the first 16 bytes of every compressed file's
 #            com.apple.decmpfs attribute recorded with its size; checked by
 #            fsck_apfs -n -W, and dumped
-#   reserve  a fresh container, to which diskutil adds a volume reserving
+#   reserve  a fresh container of 4 GiB, room for three volumes, to which
+#            diskutil adds a volume reserving
 #            8 MiB and one reserving 64 MiB; 40 MiB written to the first, past
 #            its reserve, and 4 MiB to the second, within it; each unmounted,
 #            the container listed, checked by fsck_apfs -n -W, and dumped, so
@@ -63,7 +64,7 @@ if img=$(newfs_file made 256m -v Made); then
 fi
 
 section reserve
-if img=$(newfs_file reserve 512m -v Base); then
+if img=$(newfs_file reserve 4g -v Base); then
     if dev=$(attach_raw reserve "$img"); then
         if cont=$(container_of reserve-list "$dev"); then
             sstep reserve-add-over 120 diskutil apfs addVolume "$cont" APFS Over -reserve 8m -nomount

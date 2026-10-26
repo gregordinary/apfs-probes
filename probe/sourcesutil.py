@@ -173,7 +173,7 @@ def headers(directory, out):
             entry = {"file": os.path.relpath(path, directory), "st_size": st.st_size,
                      "flags": "0x%x" % getattr(st, "st_flags", 0)}
             try:
-                value = get_xattr(path, DECMPFS)
+                value = get_xattr(path.encode(), DECMPFS)
                 entry["decmpfs_len"] = len(value)
                 entry["first16"] = value[:16].hex()
             except OSError as e:

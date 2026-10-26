@@ -311,6 +311,17 @@ def omap_lookup(reader, omap_addr, max_xid=None):
 
     resolve.smallest = smallest
 
+    def newest():
+        """(oid, address) of each identifier's newest mapping."""
+        best = {}
+        for key, value in walk(reader, tree):
+            oid, xid = struct.unpack_from("<QQ", key, 0)
+            if oid not in best or xid > best[oid][0]:
+                best[oid] = (xid, struct.unpack_from("<Q", value, 8)[0])
+        return [(oid, b[1]) for oid, b in best.items()]
+
+    resolve.newest = newest
+
     def nearest(oid):
         """How far the nearest identifier the map holds lies from OID, as a
         power of two bound."""
@@ -420,6 +431,24 @@ def read_volume(reader, sb, seconds):
             struct.unpack_from("<HHHH", node.block, node.toc + 8 * i)
             for i in range(min(node.nkeys, 4))]
         out["root_table"] = [node.toc, node.keys, node.vend]
+    if not node.leaf and node.info()[0] & BTREE_HASHED and resolve is not None:
+        # Each root child found by its hash among the blocks the volume's
+        # object map points at, and how the identifier the root stores
+        # relates to the child's mapped identifier and to its address.
+        by_hash = {}
+        for oid, addr in resolve.newest():
+            by_hash[hashlib.new(reader.hash_name, reader.img.block(addr)).digest()] = (oid, addr)
+        relations = {"found": 0, "not found": 0, "oid minus stored": {}, "address minus stored": {}}
+        for _, v in node.entries(0, 0):
+            stored = struct.unpack_from("<Q", v, 0)[0]
+            hit = by_hash.get(v[8:8 + 32])
+            if hit is None:
+                relations["not found"] += 1
+                continue
+            relations["found"] += 1
+            bump(relations["oid minus stored"], str(hit[0] - stored))
+            bump(relations["address minus stored"], str(hit[1] - stored))
+        out["root_children_by_hash"] = relations
     out["tree_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
         "<QQ", node.block, len(node.block) - 16)))
     omap = reader.node(struct.unpack_from("<Q", sb, APFS_OMAP_OID)[0])

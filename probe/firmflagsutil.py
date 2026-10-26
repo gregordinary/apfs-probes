@@ -272,6 +272,8 @@ def walk(reader, root_addr, resolve=None, first_key=None):
                 below = reader.hashed_child(child, resolve, value[8:], node.level, len(value))
             else:
                 addr = resolve(child) if resolve else child
+                if addr is None:
+                    bump(reader.ways, "unmapped")
                 below = None if addr is None else reader.node(addr)
             if below is not None:
                 yield from visit(below)
@@ -300,6 +302,14 @@ def omap_lookup(reader, omap_addr, max_xid=None):
                     best = (k_xid, struct.unpack_from("<Q", value, 8)[0])
             cache[oid] = best[1] if best else None
         return cache[oid]
+
+    def smallest():
+        """The smallest identifier the map holds."""
+        for key, _ in walk(reader, tree):
+            return struct.unpack_from("<Q", key, 0)[0]
+        return None
+
+    resolve.smallest = smallest
 
     def nearest(oid):
         """How far the nearest identifier the map holds lies from OID, as a
@@ -399,12 +409,24 @@ def read_volume(reader, sb, seconds):
         return out
     out["tree_flags"] = "%#x" % node.info()[0]
     out["root_node"] = {"flags": "%#x" % node.flags, "level": node.level, "keys": node.nkeys}
+    if not node.leaf:
+        # The root's index entries as numbers alone: each key's length and
+        # record type, and each value's length and its first word.
+        out["root_entries"] = [
+            [len(k), struct.unpack_from("<Q", k, 0)[0] >> OBJ_TYPE_SHIFT, len(v),
+             struct.unpack_from("<Q", v, 0)[0]]
+            for k, v in node.entries(0, 0) if v is not None]
+        out["root_entry_value_offsets"] = [
+            struct.unpack_from("<HHHH", node.block, node.toc + 8 * i)
+            for i in range(min(node.nkeys, 4))]
+        out["root_table"] = [node.toc, node.keys, node.vend]
     out["tree_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
         "<QQ", node.block, len(node.block) - 16)))
     omap = reader.node(struct.unpack_from("<Q", sb, APFS_OMAP_OID)[0])
     if omap is not None:
         map_root = reader.node(struct.unpack_from("<Q", omap.block, 48)[0])
         if map_root is not None:
+            out["volume_map_smallest"] = resolve.smallest() if resolve else None
             out["volume_map_counts"] = dict(zip(("keys", "nodes"), struct.unpack_from(
                 "<QQ", map_root.block, len(map_root.block) - 16)))
     child_resolve = None if physical else resolve

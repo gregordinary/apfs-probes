@@ -70,6 +70,7 @@ APFS_ROOT_TREE_OID = 136
 APFS_VOL_UUID = 240
 APFS_FS_FLAGS = 264
 APFS_ROLE = 964
+APFS_INTEGRITY_META_OID = 1024
 APFS_VOL_ROLE_SYSTEM = 0x0001
 
 # btree_node_phys_t (p. 123) and btree_info_t (p. 126).
@@ -79,11 +80,14 @@ BTNODE_FIXED_KV_SIZE = 0x4
 BTNODE_NOHEADER = 0x10
 BTREE_HASHED = 0x80
 BTREE_INFO_SIZE = 40
+BTNODE_HASHED = 0x8
 # A hashed tree's index value is btn_index_node_val_t (p. 127): the child's
-# oid, then its hash in BTREE_NODE_HASH_SIZE_MAX bytes, of which SHA-256,
-# APFS_HASH_DEFAULT (p. 153), fills the first 32. A node of a tree stored
-# without object headers has a zero btn_o and no checksum to check.
-SHA256_SIZE = 32
+# oid, then its hash in BTREE_NODE_HASH_SIZE_MAX bytes, by the algorithm
+# integrity_meta_phys_t's im_hash_type names (p. 150), at offset 40, with
+# the values of apfs_hash_type_t (p. 152). A node of a tree stored without
+# object headers has a zero btn_o and no checksum to check.
+IM_HASH_TYPE = 40
+HASHES = {1: "sha256", 2: "sha512_256", 3: "sha384", 4: "sha512"}
 
 # File-system records (p. 71 on), and j_xattr_key_t and j_xattr_val_t (p. 82).
 OBJ_ID_MASK = 0x0FFFFFFFFFFFFFFF
@@ -158,6 +162,7 @@ class Reader:
         self.hash_differs = 0
         self.unchecked = 0
         self.ways = {}
+        self.hash_name = "sha256"
 
     def node(self, addr):
         """The node at ADDR, checked by its checksum, or None where that
@@ -176,10 +181,12 @@ class Reader:
         self.failed += 1
         return None
 
-    def hashed_child(self, oid, resolve, hashed):
-        """The child OID of a hashed tree's index node, found where its hash
-        HASHED matches: at the address the object map gives it, and else at
-        OID taken as an address. Which way it was found is counted."""
+    def hashed_child(self, oid, resolve, hashed, level):
+        """The child OID of a hashed tree's index node at LEVEL, found where
+        its hash HASHED matches: at the address the object map gives it, and
+        else at OID taken as an address. Which way it was found is counted,
+        and where none matches, whether the block at OID is shaped as the
+        child would be: headerless and hashed, one level down."""
         tries = []
         if resolve is not None:
             addr = resolve(oid)
@@ -190,12 +197,18 @@ class Reader:
                 continue
             block = self.img.block(addr)
             self.read += 1
-            if hashlib.sha256(block).digest() == hashed[:SHA256_SIZE]:
+            digest = hashlib.new(self.hash_name, block).digest()
+            if digest == hashed[:len(digest)]:
                 self.by_hash += 1
                 bump(self.ways, way)
                 return Node(block)
         self.hash_differs += 1
         bump(self.ways, "+".join(w for w, _ in tries) + " differs")
+        block = self.img.block(oid)
+        flags, below = struct.unpack_from("<HH", block, 32)
+        shaped = (block[:32] == bytes(32) and flags & BTNODE_NOHEADER and flags & BTNODE_HASHED
+                  and below + 1 == level)
+        bump(self.ways, "as-address shaped like the child: %s" % bool(shaped))
         return None
 
 
@@ -251,7 +264,7 @@ def walk(reader, root_addr, resolve=None, first_key=None):
                     continue
             child = struct.unpack_from("<Q", value, 0)[0]
             if hashed:
-                below = reader.hashed_child(child, resolve, value[8:8 + SHA256_SIZE])
+                below = reader.hashed_child(child, resolve, value[8:], node.level)
             else:
                 addr = resolve(child) if resolve else child
                 below = None if addr is None else reader.node(addr)
@@ -325,6 +338,20 @@ def volumes(reader):
     return out
 
 
+def hash_type(reader, sb, resolve):
+    """im_hash_type of the volume's integrity metadata, found through the
+    volume's object map and else at its identifier taken as an address, or
+    None where neither verifies."""
+    oid = struct.unpack_from("<Q", sb, APFS_INTEGRITY_META_OID)[0]
+    for addr in ((resolve(oid) if resolve else None), oid):
+        if addr is None or addr == 0:
+            continue
+        block = reader.img.block(addr)
+        if fletcher_ok(block):
+            return struct.unpack_from("<I", block, IM_HASH_TYPE)[0]
+    return None
+
+
 def bump(table, key):
     table[key] = table.get(key, 0) + 1
 
@@ -357,6 +384,9 @@ def read_volume(reader, sb, seconds):
     out["tree_flags"] = "%#x" % node.info()[0]
     out["root_node"] = {"flags": "%#x" % node.flags, "level": node.level, "keys": node.nkeys}
     child_resolve = None if physical else resolve
+    if node.info()[0] & BTREE_HASHED:
+        out["hash_type"] = hash_type(reader, sb, resolve)
+        reader.hash_name = HASHES.get(out["hash_type"], "sha256")
 
     firm = {"inodes": 0, "record_flags": {}, "held": {}, "ends_with_nul": {},
             "value_is_a_second_field": {}, "bsd_flags": {}, "internal_flags": {},
